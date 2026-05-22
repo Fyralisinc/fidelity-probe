@@ -1,0 +1,9 @@
+slack_sdk>=3.27
+PyGithub>=2.3
+discord.py>=2.3
+jsonschema>=4.21
+openapi-schema-validator>=0.6
+requests>=2.31
+flask>=3.0
+cryptography>=42
+python-dotenv>=1.0
