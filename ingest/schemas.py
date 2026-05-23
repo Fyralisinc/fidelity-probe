@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft4Validator
+from jsonschema.exceptions import best_match
 from openapi_schema_validator import OAS30Validator, OAS31Validator
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT4, DRAFT202012
@@ -91,6 +92,22 @@ class SpecValidator:
             node = node[p]
         return node
 
+    def _deref(self, obj: Any) -> Any:
+        """Follow a single intra-document `$ref` (JSON pointer into self.doc).
+
+        OAS 3.x specs (GitHub, Discord) frequently express response examples as a
+        `$ref` into `#/components/examples/*` rather than inlining them. Resolving
+        that ref lets the self-consistency check (does the spec's own example uphold
+        its own schema?) run for those specs too, so an authoritative spec is held to
+        exactly the same fairness standard as Slack's inline-example one.
+        """
+        if isinstance(obj, dict) and "$ref" in obj and isinstance(obj["$ref"], str):
+            ref = obj["$ref"]
+            if ref.startswith("#/"):
+                parts = [p.replace("~1", "/").replace("~0", "~") for p in ref[2:].split("/")]
+                return self._node(*parts)
+        return obj
+
     def component(self, name: str) -> dict[str, Any] | None:
         return self._node(*self._schema_root, name)
 
@@ -144,15 +161,18 @@ class SpecValidator:
         if self.dialect == "swagger2":
             examples = resp.get("examples")
             if isinstance(examples, dict) and examples:
-                return next(iter(examples.values()))
+                return self._deref(next(iter(examples.values())))
             return None
         content = resp.get("content", {})
         media = content.get("application/json") or next(iter(content.values()), {})
         if "example" in media:
-            return media["example"]
+            return self._deref(media["example"])
         examples = media.get("examples")
         if isinstance(examples, dict) and examples:
-            return next(iter(examples.values())).get("value")
+            first = self._deref(next(iter(examples.values())))
+            if isinstance(first, dict) and "value" in first:
+                return self._deref(first["value"])
+            return first
         return None
 
     def response_authoritative(self, path: str, method: str = "get",
@@ -214,8 +234,23 @@ class SpecValidator:
                 if self.lenient:
                     continue
             if len(hard) < _MAX_ERRORS:
-                hard.append(f"{loc}: {err.message}")
+                hard.append(f"{loc}: {self._message(err)}")
         return hard, undocumented
+
+    @staticmethod
+    def _message(err) -> str:
+        """A useful one-line message, drilling into anyOf/oneOf branches.
+
+        A bare anyOf/oneOf failure reports the unhelpful "X is not valid under any of
+        the given schemas"; the real cause (e.g. a missing required field) lives in the
+        sub-errors. We surface the best-matching sub-error so findings are actionable.
+        """
+        if err.context:
+            deep = best_match(err.context)
+            if deep is not None:
+                tail = "/".join(str(p) for p in deep.relative_path)
+                return f"{deep.message}" + (f" (at {tail})" if tail else "")
+        return err.message
 
     def _validate(self, payload: Any, ref_schema: dict[str, Any] | None,
                   label: str, report: FidelityReport, authoritative: bool = True) -> bool:

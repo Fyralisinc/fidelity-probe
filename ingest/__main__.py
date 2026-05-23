@@ -29,7 +29,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("provider", choices=["slack", "github", "discord"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
-                        help="cap channels scanned (smoke testing)")
+                        help="cap channels scanned (Slack smoke testing)")
+    parser.add_argument("--max-repos", type=int, default=None,
+                        help="cap repositories scanned (GitHub smoke testing)")
+    parser.add_argument("--max-guilds", type=int, default=None,
+                        help="cap guilds scanned (Discord smoke testing)")
+    parser.add_argument("--seconds", type=float, default=None,
+                        help="time budget for a live listener before it stops on its own")
     args = parser.parse_args(argv)
 
     if args.provider == "slack":
@@ -38,8 +44,20 @@ def main(argv: list[str] | None = None) -> int:
                   if args.mode == "historical" else slack_run.run_live())
         return _finish(report)
 
-    print(f"{args.provider} slice not built yet (Slack-first; paused for review).",
-          file=sys.stderr)
+    if args.provider == "github":
+        from .github import run as github_run
+        report = (github_run.run_historical(max_repos=args.max_repos)
+                  if args.mode == "historical" else github_run.run_live())
+        return _finish(report)
+
+    if args.provider == "discord":
+        from .discord import run as discord_run
+        report = (discord_run.run_historical(max_guilds=args.max_guilds)
+                  if args.mode == "historical"
+                  else discord_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    print(f"unknown provider {args.provider!r}", file=sys.stderr)
     return 2
 
 

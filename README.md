@@ -33,20 +33,42 @@ python scripts/fetch_specs.py          # cache the 3 official specs into specs/
 cp .env.example .env                   # then fill in base URLs / credentials
 ```
 
-## Run (Slack — the only slice built so far)
+## Run
 
 ```bash
 python -m ingest slack historical      # full paginated pull + schema audit
 python -m ingest slack live            # Events API webhook listener (signed)
+
+python -m ingest github historical     # App-JWT auth + Link-paginated REST audit
+python -m ingest github live           # webhook listener (X-Hub-Signature-256)
+
+python -m ingest discord historical    # guilds→channels→messages, snowflake pagination
+python -m ingest discord live          # gateway listener (IDENTIFY→READY→events)
 ```
 
-Reports are written to `reports/slack.report.{json,md}`. Exit code is non-zero if any
-divergence was observed.
+The Discord historical run logs in with the Bot token, then pages every guild's
+channels and message history (snowflake `before`/`after` cursors), validating each
+payload against the official OpenAPI 3.1 spec. discord.py has no base-URL parameter,
+so the slice redirects both transports — REST (`Route.BASE`) and the gateway
+(`DiscordWebSocket.DEFAULT_GATEWAY`) — at the target; nothing else about the library
+changes. The live run connects the real gateway and schema-validates `MESSAGE_CREATE`
+payloads against `MessageResponse`.
 
-### Offline self-check
+The GitHub historical run performs the real two-legged App auth (RS256 App JWT →
+`POST /app/installations/{id}/access_tokens` → `ghs_` token), then reads every
+installation repo's issues/PRs/commits/branches/labels with `Link` pagination,
+verifies `ETag`/`304 Not Modified` conditional requests, and audits the standard
+GitHub response headers — all validated against the official OpenAPI 3.0 spec.
+
+Reports are written to `reports/<provider>.report.{json,md}`. Exit code is non-zero
+if any divergence was observed.
+
+### Offline self-checks
 
 ```bash
-python scripts/selfcheck_slack.py      # exercises the full pipeline with no external server
+python scripts/selfcheck_slack.py      # full Slack pipeline against a throwaway server
+python scripts/selfcheck_github.py     # full GitHub pipeline (incl. JWT auth + ETag/304)
+python scripts/selfcheck_discord.py    # full Discord pipeline (REST + real gateway handshake)
 ```
 
 ## Layout
@@ -58,14 +80,21 @@ ingest/
   fidelity.py          report accumulator (-> JSON + Markdown), nonzero exit on divergence
   webhook_server.py    Flask host for signed webhooks
   slack/               auth (OAuth) · historical (cursor pagination) · live (Events API) · run
-  github/              (slice 2 — not built yet)
-  discord/             (slice 3 — not built yet)
+  github/              auth (App JWT → installation token) · historical (Link pagination,
+                       ETag/304, header audit) · live (signed webhooks) · run
+  discord/             auth (Bot token + REST/gateway redirect) · historical (snowflake
+                       pagination) · live (gateway IDENTIFY→events) · run
 scripts/
   fetch_specs.py       download + pin official OpenAPI specs
   selfcheck_slack.py   dev harness: end-to-end Slack pipeline against a throwaway server
+  selfcheck_github.py  dev harness: end-to-end GitHub pipeline (incl. App-JWT auth)
+  selfcheck_discord.py dev harness: end-to-end Discord pipeline (REST + fake gateway)
 ```
 
 ## Status
 
 - **Slack:** built (auth, historical, live, schema, report).
-- **GitHub / Discord:** planned, paused for review per the agreed Slack-first cadence.
+- **GitHub:** built (App-JWT auth, historical with Link pagination + ETag/304 + header
+  audit, live webhooks, schema, report).
+- **Discord:** built (Bot-token auth with REST + gateway redirection, snowflake-paginated
+  historical, live gateway events, schema, report).

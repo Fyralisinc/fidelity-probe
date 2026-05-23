@@ -1,5 +1,6 @@
 slack_sdk>=3.27
 PyGithub>=2.3
+PyJWT>=2.8
 discord.py>=2.3
 jsonschema>=4.21
 openapi-schema-validator>=0.6

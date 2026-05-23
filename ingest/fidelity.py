@@ -55,6 +55,9 @@ class FidelityReport:
     rate_limit_events: list[dict[str, Any]] = field(default_factory=list)
     live_events: list[dict[str, Any]] = field(default_factory=list)
     signature_checks: list[dict[str, Any]] = field(default_factory=list)
+    # Protocol-level observations that aren't payload-schema (e.g. ETag/304 conditional
+    # requests, presence of documented response headers, Link-pagination integrity).
+    protocol_checks: list[dict[str, Any]] = field(default_factory=list)
     schema_checks: dict[str, SchemaCheck] = field(default_factory=dict)
     divergences: list[Divergence] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -89,6 +92,13 @@ class FidelityReport:
         self.signature_checks.append({"endpoint": endpoint, "valid": valid, "detail": detail})
         if not valid:
             self.diverge("signature", endpoint, detail or "signature verification failed")
+
+    def record_protocol(self, check: str, ok: bool, detail: str = "",
+                        diverge_category: str = "protocol") -> None:
+        """Record a protocol-level observation; a failure becomes a divergence."""
+        self.protocol_checks.append({"check": check, "ok": ok, "detail": detail})
+        if not ok:
+            self.diverge(diverge_category, check, detail or "protocol check failed")
 
     def record_live_event(self, kind: str, summary: str) -> None:
         self.live_events.append({"kind": kind, "summary": summary, "at": time.time()})
@@ -138,6 +148,7 @@ class FidelityReport:
             "rate_limit_events": self.rate_limit_events,
             "live_events": self.live_events,
             "signature_checks": self.signature_checks,
+            "protocol_checks": self.protocol_checks,
             "schema_checks": {k: dataclasses.asdict(v) for k, v in self.schema_checks.items()},
             "divergences": [dataclasses.asdict(d) for d in self.divergences],
             "notes": self.notes,
@@ -180,6 +191,12 @@ class FidelityReport:
             for e in self.signature_checks:
                 mark = "ok" if e["valid"] else "FAIL"
                 out.append(f"- {e['endpoint']}: {mark} {e['detail']}".rstrip())
+            out.append("")
+        if self.protocol_checks:
+            out.append("## Protocol checks")
+            for e in self.protocol_checks:
+                mark = "ok" if e["ok"] else "FAIL"
+                out.append(f"- {e['check']}: {mark} {e['detail']}".rstrip())
             out.append("")
         if self.live_events:
             out.append("## Live events")

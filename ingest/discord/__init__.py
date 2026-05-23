@@ -1,1 +1,2 @@
-"""Discord provider slice (slice 3 — not built yet)."""
+"""Discord provider slice: Bot-token auth with REST + gateway base redirection,
+snowflake-paginated historical ingestion, and live gateway event capture."""

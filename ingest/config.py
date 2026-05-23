@@ -115,7 +115,14 @@ class GitHubConfig:
 
     @classmethod
     def from_env(cls) -> "GitHubConfig":
-        base_url = os.environ.get("GITHUB_BASE_URL", "https://api.github.com").rstrip("/")
+        # GITHUB_API_BASE_URL is the name an integrator is typically handed (it mirrors
+        # GitHub Enterprise's documented `https://HOST/api/v3` knob); GITHUB_BASE_URL is
+        # PyGithub's own constructor param name. Accept either, preferring the explicit one.
+        base_url = (
+            os.environ.get("GITHUB_BASE_URL")
+            or os.environ.get("GITHUB_API_BASE_URL")
+            or "https://api.github.com"
+        ).rstrip("/")
         private_key = os.environ.get("GITHUB_PRIVATE_KEY")
         key_path = os.environ.get("GITHUB_PRIVATE_KEY_PATH")
         if not private_key and key_path:
@@ -129,6 +136,27 @@ class GitHubConfig:
             webhook_secret=os.environ.get("GITHUB_WEBHOOK_SECRET"),
         )
 
+    def require_app_auth(self) -> tuple[str, str, str]:
+        """The three inputs a GitHub App integrator is handed: app id, key, installation."""
+        missing = [
+            name for name, val in (
+                ("GITHUB_APP_ID", self.app_id),
+                ("GITHUB_PRIVATE_KEY / GITHUB_PRIVATE_KEY_PATH", self.private_key),
+                ("GITHUB_INSTALLATION_ID", self.installation_id),
+            ) if not val
+        ]
+        if missing:
+            raise ConfigError(
+                "GitHub App authentication requires " + ", ".join(missing) + ". "
+                "See .env.example for the full list."
+            )
+        return self.app_id, self.private_key, self.installation_id  # type: ignore[return-value]
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("GITHUB_WEBHOOK_SECRET is required to verify webhook deliveries.")
+        return self.webhook_secret
+
 
 # --------------------------------------------------------------------------- Discord
 
@@ -136,16 +164,30 @@ class GitHubConfig:
 @dataclass(frozen=True)
 class DiscordConfig:
     api_base: str  # e.g. https://discord.com/api/v10
-    gateway_url: str | None  # explicit override; else resolved via GET /gateway/bot
+    gateway_url: str | None  # ws gateway base; None -> discord.py's default (real service)
     bot_token: str | None
 
     @classmethod
     def from_env(cls) -> "DiscordConfig":
+        # DISCORD_API_BASE_URL is the name an integrator is handed; DISCORD_API_BASE is
+        # the repo's older name. Accept either, default to the real production host.
+        api_base = (
+            os.environ.get("DISCORD_API_BASE")
+            or os.environ.get("DISCORD_API_BASE_URL")
+            or "https://discord.com/api/v10"
+        ).rstrip("/")
         return cls(
-            api_base=os.environ.get("DISCORD_API_BASE", "https://discord.com/api/v10").rstrip("/"),
+            api_base=api_base,
             gateway_url=os.environ.get("DISCORD_GATEWAY_URL"),
             bot_token=os.environ.get("DISCORD_BOT_TOKEN"),
         )
+
+    def require_bot_token(self) -> str:
+        if not self.bot_token:
+            raise ConfigError(
+                "DISCORD_BOT_TOKEN is required (the bot token from the Discord application)."
+            )
+        return self.bot_token
 
 
 # --------------------------------------------------------------------------- Shared
