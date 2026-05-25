@@ -10,12 +10,16 @@ behavior, with **no knowledge of any mock**. The only per-provider knob is the b
 
 ## Design rules
 
-- **Official SDKs only:** `slack_sdk`, `PyGithub`, `discord.py`.
-- **One knob:** the only per-provider configuration is the base URL (and Discord's gateway
-  URL), via env vars. Defaults point at the real production hosts, so no env == real target.
-  There are **no mock-specific branches** anywhere.
+- **Official SDKs / documented wire:** `slack_sdk`, `PyGithub`, `discord.py` where an
+  official Python SDK exists; Google (Gmail/Calendar/Directory) and Notion have no first-
+  party Python SDK, so they're built against the official documented REST contracts and
+  auth flows (matching what google-auth/the SDKs do on the wire).
+- **One knob:** the only per-provider configuration is the base URL(s), via env vars.
+  Defaults point at the real production hosts, so no env == real target. There are **no
+  mock-specific branches** anywhere.
 - **Real auth flows:** Slack OAuth v2, GitHub App-JWT → installation token, Discord bot
-  token + gateway IDENTIFY.
+  token + gateway IDENTIFY, Google service-account JWT-bearer + domain-wide delegation,
+  Notion internal-integration bearer.
 - **Strict schema validation** against the providers' official specs. A schema failure is
   only counted as a *divergence* when the spec is authoritative for that payload (its own
   example upholds the schema); otherwise it's recorded as a spec self-inconsistency, not a
@@ -44,7 +48,22 @@ python -m ingest github live           # webhook listener (X-Hub-Signature-256)
 
 python -m ingest discord historical    # guilds→channels→messages, snowflake pagination
 python -m ingest discord live          # gateway listener (IDENTIFY→READY→events)
+
+python -m ingest gmail historical      # SA+DWD → directory enumerate → messages backfill
+python -m ingest calendar historical   # SA+DWD → events backfill + syncToken incremental
+python -m ingest notion historical     # Bearer + Notion-Version → search → full objects
 ```
+
+Gmail and Calendar authenticate with a Google **service account using domain-wide
+delegation**: a signed JWT assertion is exchanged at the token endpoint for a per-user
+bearer (`sub` = the impersonated user), mailboxes/users are enumerated through the Admin
+Directory API, and reads use read-only scopes. Calendar additionally exercises the
+`syncToken` incremental path and the expired-token (`410 fullSyncRequired`) path. Notion
+uses a single internal integration (`Authorization: Bearer …`, pinned
+`Notion-Version: 2022-06-28`). Gmail/Calendar accept `--max-users` to bound a run; live
+push/webhook delivery is not wired yet. Google responses are validated against the
+official **discovery documents**; Notion against contracts hand-authored from its API
+reference (no official OpenAPI exists).
 
 The Discord historical run logs in with the Bot token, then pages every guild's
 channels and message history (snowflake `before`/`after` cursors), validating each
@@ -84,6 +103,9 @@ ingest/
                        ETag/304, header audit) · live (signed webhooks) · run
   discord/             auth (Bot token + REST/gateway redirect) · historical (snowflake
                        pagination) · live (gateway IDENTIFY→events) · run
+  google/              auth (SA JWT-bearer + DWD) · directory (enumerate users) ·
+                       gmail · calendar (events + syncToken) · transport (429) · run
+  notion/              client (Bearer + Notion-Version + 429) · historical · run
 scripts/
   fetch_specs.py       download + pin official OpenAPI specs
   selfcheck_slack.py   dev harness: end-to-end Slack pipeline against a throwaway server
@@ -98,3 +120,8 @@ scripts/
   audit, live webhooks, schema, report).
 - **Discord:** built (Bot-token auth with REST + gateway redirection, snowflake-paginated
   historical, live gateway events, schema, report).
+- **Gmail / Calendar:** built (service-account + domain-wide-delegation auth, Admin
+  Directory enumeration, message/event backfill, Calendar syncToken incremental +
+  expired-token paths, discovery-schema validation, report). Live push deferred.
+- **Notion:** built (internal-integration auth, search/enumerate → paginate → full-object
+  fetch, 429/Retry-After handling, schema, report). Live webhook deferred.
