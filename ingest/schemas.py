@@ -32,6 +32,12 @@ _SPEC_FILES = {
     "slack": "slack.openapi.json",
     "github": "github.openapi.json",
     "discord": "discord.openapi.json",
+    # Google APIs ship discovery documents (not OpenAPI); handled as a 4th dialect.
+    "gmail": "gmail.discovery.json",
+    "calendar": "calendar.discovery.json",
+    "admin_directory": "admin_directory.discovery.json",
+    # Notion: hand-authored from the official API reference (no official OpenAPI exists).
+    "notion": "notion.openapi.json",
 }
 
 _MAX_ERRORS = 3
@@ -40,6 +46,26 @@ _MAX_ERRORS = 3
 def _esc(token: str) -> str:
     """Escape a single JSON Pointer reference token (RFC 6901)."""
     return token.replace("~", "~0").replace("/", "~1")
+
+
+def _normalize_discovery(node: Any) -> None:
+    """In-place: make a Google discovery doc validatable with a JSON-Schema validator.
+
+    Discovery `$ref`s are bare schema names ({"$ref": "Event"}) and it uses the
+    non-standard `type: "any"`. Rewrite name refs into `#/schemas/<name>` JSON pointers
+    and drop `type: "any"` so a Draft4 validator resolves and runs cleanly.
+    """
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and not ref.startswith("#") and "/" not in ref:
+            node["$ref"] = f"#/schemas/{ref}"
+        if node.get("type") == "any":
+            node.pop("type")
+        for v in node.values():
+            _normalize_discovery(v)
+    elif isinstance(node, list):
+        for v in node:
+            _normalize_discovery(v)
 
 
 class SpecValidator:
@@ -63,7 +89,16 @@ class SpecValidator:
         self.doc_uri = f"urn:spec:{provider}"
 
         version = self.doc.get("openapi") or self.doc.get("swagger") or ""
-        if version.startswith("2"):
+        if self.doc.get("kind") == "discovery#restDescription" or "discoveryVersion" in self.doc:
+            # Google discovery format: schemas under "schemas", $refs are bare schema
+            # names, and the dialect is JSON-Schema Draft-4-ish. Normalize name refs to
+            # JSON pointers and drop the non-standard `type: "any"` so Draft4 can run.
+            self.dialect = "google_discovery"
+            _normalize_discovery(self.doc)
+            self._validator_cls = Draft4Validator
+            specification = DRAFT4
+            self._schema_root = ("schemas",)
+        elif version.startswith("2"):
             self.dialect = "swagger2"
             self._validator_cls = Draft4Validator
             specification = DRAFT4

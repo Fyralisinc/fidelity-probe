@@ -190,6 +190,103 @@ class DiscordConfig:
         return self.bot_token
 
 
+# --------------------------------------------------------------------------- Google
+
+# Read-only scopes per the integration model.
+GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+DIRECTORY_SCOPE = "https://www.googleapis.com/auth/admin.directory.user.readonly"
+
+
+@dataclass(frozen=True)
+class GoogleConfig:
+    """Service-account / domain-wide-delegation config shared by Gmail and Calendar.
+
+    The only behavioral knobs are the base URLs (token, REST, directory, JWKS). All
+    default to the real Google hosts. The SA private key is supplied the way a real
+    service-account key is (env or file); if none is configured the client falls back
+    to an ephemeral key (the mock does not verify the assertion signature) and records
+    that fact.
+    """
+    service_account_email: str | None
+    customer_id: str | None
+    domain: str | None
+    admin_subject: str | None
+    private_key: str | None
+    gmail_base: str
+    gmail_token_url: str
+    directory_base: str
+    directory_token_url: str
+    calendar_base: str
+    calendar_token_url: str
+    jwks_url: str | None
+
+    @classmethod
+    def from_env(cls) -> "GoogleConfig":
+        domain = os.environ.get("GOOGLE_DOMAIN")
+        private_key = os.environ.get("GOOGLE_PRIVATE_KEY")
+        key_path = os.environ.get("GOOGLE_PRIVATE_KEY_PATH")
+        if not private_key and key_path:
+            with open(key_path, "r", encoding="utf-8") as fh:
+                private_key = fh.read()
+        return cls(
+            service_account_email=os.environ.get("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
+            customer_id=os.environ.get("GOOGLE_CUSTOMER_ID"),
+            domain=domain,
+            admin_subject=os.environ.get("GOOGLE_ADMIN_SUBJECT")
+            or (f"admin@{domain}" if domain else None),
+            private_key=private_key,
+            gmail_base=os.environ.get(
+                "GMAIL_API_BASE_URL", "https://gmail.googleapis.com/gmail/v1").rstrip("/"),
+            gmail_token_url=os.environ.get(
+                "GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+            directory_base=os.environ.get(
+                "GMAIL_DIRECTORY_BASE_URL",
+                "https://admin.googleapis.com/admin/directory/v1").rstrip("/"),
+            directory_token_url=os.environ.get(
+                "GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+            calendar_base=os.environ.get(
+                "CALENDAR_API_BASE_URL", "https://www.googleapis.com/calendar/v3").rstrip("/"),
+            calendar_token_url=os.environ.get(
+                "CALENDAR_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+            jwks_url=os.environ.get("GMAIL_JWKS_URL",
+                                    "https://www.googleapis.com/oauth2/v3/certs"),
+        )
+
+    def require_identity(self) -> tuple[str, str, str]:
+        missing = [n for n, v in (("GOOGLE_SERVICE_ACCOUNT_EMAIL", self.service_account_email),
+                                  ("GOOGLE_CUSTOMER_ID", self.customer_id),
+                                  ("GOOGLE_DOMAIN", self.domain)) if not v]
+        if missing:
+            raise ConfigError("Google Workspace ingestion requires " + ", ".join(missing) + ".")
+        return self.service_account_email, self.customer_id, self.domain  # type: ignore[return-value]
+
+
+# --------------------------------------------------------------------------- Notion
+
+
+@dataclass(frozen=True)
+class NotionConfig:
+    api_base: str  # e.g. https://api.notion.com
+    token: str | None
+    version: str  # Notion-Version header, pinned
+
+    @classmethod
+    def from_env(cls) -> "NotionConfig":
+        return cls(
+            api_base=(os.environ.get("NOTION_API_BASE_URL")
+                      or os.environ.get("NOTION_BASE_URL")
+                      or "https://api.notion.com").rstrip("/"),
+            token=os.environ.get("NOTION_TOKEN") or os.environ.get("NOTION_BOT_TOKEN"),
+            version=os.environ.get("NOTION_VERSION", "2022-06-28"),
+        )
+
+    def require_token(self) -> str:
+        if not self.token:
+            raise ConfigError("NOTION_TOKEN is required (the internal integration token).")
+        return self.token
+
+
 # --------------------------------------------------------------------------- Shared
 
 

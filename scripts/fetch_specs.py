@@ -34,6 +34,20 @@ SPECS = {
         "https://raw.githubusercontent.com/discord/discord-api-spec/"
         "main/specs/openapi.json"
     ),
+    # Google publishes machine-readable *discovery documents* (not OpenAPI) describing
+    # each REST API: its schemas + methods. These are the authoritative contracts.
+    "gmail.discovery.json": (
+        "https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest"
+    ),
+    "calendar.discovery.json": (
+        "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"
+    ),
+    "admin_directory.discovery.json": (
+        "https://www.googleapis.com/discovery/v1/apis/admin/directory_v1/rest"
+    ),
+    # Notion publishes no official OpenAPI document; its response contracts are taken
+    # from the official API reference and hand-authored into specs/notion.openapi.json
+    # (committed, not fetched here).
 }
 
 

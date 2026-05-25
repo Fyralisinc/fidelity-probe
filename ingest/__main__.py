@@ -26,7 +26,8 @@ def _finish(report: FidelityReport) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ingest")
-    parser.add_argument("provider", choices=["slack", "github", "discord"])
+    parser.add_argument("provider",
+                        choices=["slack", "github", "discord", "gmail", "calendar", "notion"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -34,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="cap repositories scanned (GitHub smoke testing)")
     parser.add_argument("--max-guilds", type=int, default=None,
                         help="cap guilds scanned (Discord smoke testing)")
+    parser.add_argument("--max-users", type=int, default=None,
+                        help="cap mailboxes/users scanned (Gmail/Calendar smoke testing)")
     parser.add_argument("--seconds", type=float, default=None,
                         help="time budget for a live listener before it stops on its own")
     args = parser.parse_args(argv)
@@ -55,6 +58,20 @@ def main(argv: list[str] | None = None) -> int:
         report = (discord_run.run_historical(max_guilds=args.max_guilds)
                   if args.mode == "historical"
                   else discord_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    # Gmail / Calendar / Notion: read/backfill only — live push/webhook isn't wired yet.
+    if args.provider in ("gmail", "calendar", "notion"):
+        if args.mode != "historical":
+            print(f"{args.provider} has no live mode yet (push/webhook delivery is not "
+                  f"wired); run `historical`.", file=sys.stderr)
+            return 2
+        if args.provider == "notion":
+            from .notion import run as notion_run
+            return _finish(notion_run.run_historical())
+        from .google import run as google_run
+        report = (google_run.run_gmail(max_users=args.max_users) if args.provider == "gmail"
+                  else google_run.run_calendar(max_users=args.max_users))
         return _finish(report)
 
     print(f"unknown provider {args.provider!r}", file=sys.stderr)
