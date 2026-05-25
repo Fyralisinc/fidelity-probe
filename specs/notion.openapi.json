@@ -1,0 +1,152 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Notion API (hand-authored from the official reference)",
+    "version": "2022-06-28",
+    "description": "Notion publishes no official OpenAPI document. This spec encodes the response contracts documented at https://developers.notion.com/reference for the read/backfill endpoints this client uses. Required fields are those the reference documents as always present on each object; additionalProperties is permitted because Notion adds fields over time."
+  },
+  "servers": [{ "url": "https://api.notion.com" }],
+  "paths": {
+    "/v1/search": {
+      "post": {
+        "responses": {
+          "200": { "description": "paginated results",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedList" } } } }
+        }
+      }
+    },
+    "/v1/users": {
+      "get": {
+        "responses": {
+          "200": { "description": "paginated users",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedList" } } } }
+        }
+      }
+    },
+    "/v1/users/{id}": {
+      "get": {
+        "responses": {
+          "200": { "description": "a user",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } }
+        }
+      }
+    },
+    "/v1/pages/{id}": {
+      "get": {
+        "responses": {
+          "200": { "description": "a page",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Page" } } } }
+        }
+      }
+    },
+    "/v1/databases/{id}": {
+      "get": {
+        "responses": {
+          "200": { "description": "a database",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Database" } } } }
+        }
+      }
+    },
+    "/v1/databases/{id}/query": {
+      "post": {
+        "responses": {
+          "200": { "description": "paginated query results",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedList" } } } }
+        }
+      }
+    },
+    "/v1/blocks/{id}/children": {
+      "get": {
+        "responses": {
+          "200": { "description": "paginated block children",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedList" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PaginatedList": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "results", "has_more", "next_cursor", "type"],
+        "properties": {
+          "object": { "type": "string", "const": "list" },
+          "results": { "type": "array", "items": { "type": "object" } },
+          "has_more": { "type": "boolean" },
+          "next_cursor": { "type": ["string", "null"] },
+          "type": { "type": "string" }
+        }
+      },
+      "Page": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "id", "created_time", "last_edited_time", "created_by",
+                     "last_edited_by", "archived", "properties", "parent", "url"],
+        "properties": {
+          "object": { "type": "string", "const": "page" },
+          "id": { "type": "string" },
+          "created_time": { "type": "string" },
+          "last_edited_time": { "type": "string" },
+          "created_by": { "$ref": "#/components/schemas/PartialUser" },
+          "last_edited_by": { "$ref": "#/components/schemas/PartialUser" },
+          "archived": { "type": "boolean" },
+          "properties": { "type": "object" },
+          "parent": { "type": "object" },
+          "url": { "type": "string" }
+        }
+      },
+      "Database": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "id", "created_time", "last_edited_time", "title",
+                     "properties", "parent"],
+        "properties": {
+          "object": { "type": "string", "const": "database" },
+          "id": { "type": "string" },
+          "created_time": { "type": "string" },
+          "last_edited_time": { "type": "string" },
+          "title": { "type": "array" },
+          "properties": { "type": "object" },
+          "parent": { "type": "object" }
+        }
+      },
+      "Block": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "id", "type", "created_time", "last_edited_time",
+                     "has_children", "archived"],
+        "properties": {
+          "object": { "type": "string", "const": "block" },
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "created_time": { "type": "string" },
+          "last_edited_time": { "type": "string" },
+          "has_children": { "type": "boolean" },
+          "archived": { "type": "boolean" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "id"],
+        "properties": {
+          "object": { "type": "string", "const": "user" },
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["person", "bot"] },
+          "name": { "type": ["string", "null"] },
+          "avatar_url": { "type": ["string", "null"] }
+        }
+      },
+      "PartialUser": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["object", "id"],
+        "properties": {
+          "object": { "type": "string", "const": "user" },
+          "id": { "type": "string" }
+        }
+      }
+    }
+  }
+}
