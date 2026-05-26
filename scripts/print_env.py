@@ -63,6 +63,19 @@ def main() -> int:
     out += [f'export NOTION_API_BASE_URL={b.get("notion","")}',
             f'export NOTION_TOKEN={n.get("bot_token","")}']
 
+    # Google Drive reuses the Google SA/DWD identity above; only its base URL is new.
+    drive_base = b.get("google_drive") or b.get("drive")
+    if drive_base:
+        out += [f'export GOOGLE_DRIVE_API_BASE_URL={drive_base}']
+
+    # Jira: per-install site base URL + Basic-auth credentials.
+    j = d.get("jira", {})
+    jira_base = b.get("jira") or j.get("base_url")
+    if jira_base:
+        out += [f'export JIRA_API_BASE_URL={jira_base}',
+                f'export JIRA_ACCOUNT_EMAIL={j.get("account_email","")}',
+                f'export JIRA_API_TOKEN={j.get("api_token","")}']
+
     print("\n".join(out))
     return 0
 

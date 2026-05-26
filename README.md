@@ -52,6 +52,9 @@ python -m ingest discord live          # gateway listener (IDENTIFY→READY→ev
 python -m ingest gmail historical      # SA+DWD → directory enumerate → messages backfill
 python -m ingest calendar historical   # SA+DWD → events backfill + syncToken incremental
 python -m ingest notion historical     # Bearer + Notion-Version → search → full objects
+
+python -m ingest drive historical      # SA+DWD (drive.readonly) → files/comments/revisions/export + changes
+python -m ingest jira historical       # HTTP Basic → projects → /search/jql (token paging) + changelog
 ```
 
 Gmail and Calendar authenticate with a Google **service account using domain-wide
@@ -60,10 +63,23 @@ bearer (`sub` = the impersonated user), mailboxes/users are enumerated through t
 Directory API, and reads use read-only scopes. Calendar additionally exercises the
 `syncToken` incremental path and the expired-token (`410 fullSyncRequired`) path. Notion
 uses a single internal integration (`Authorization: Bearer …`, pinned
-`Notion-Version: 2022-06-28`). Gmail/Calendar accept `--max-users` to bound a run; live
+`Notion-Version: 2022-06-28`).
+
+**Google Drive** reuses the same service-account/DWD auth (scope `drive.readonly`):
+it backfills files across My Drive and Shared Drives (the real
+`includeItemsFromAllDrives`/`supportsAllDrives`/`driveId`/`corpora` params), plus
+comments and revisions, exports Google-native docs (`files.export`, raw bytes), and
+exercises the incremental `changes` feed (`getStartPageToken` → `changes.list`,
+asserting it terminates with a `newStartPageToken`). **Jira** (Atlassian Cloud) uses
+HTTP Basic (`base64(email:api_token)`) against a **per-install** site base URL, enumerates
+projects, and pages issues with the current **`/rest/api/3/search/jql`** token model
+(`nextPageToken`/`isLast`, no `startAt`/`total` — the old `/search` was removed in 2025),
+reading changelogs via `expand=changelog`.
+
+`--max-users` bounds Gmail/Calendar/Drive; `--max-projects` bounds Jira; live
 push/webhook delivery is not wired yet. Google responses are validated against the
-official **discovery documents**; Notion against contracts hand-authored from its API
-reference (no official OpenAPI exists).
+official **discovery documents**; Notion and Jira against contracts hand-authored from
+their API references (no usable official OpenAPI to pin).
 
 The Discord historical run logs in with the Bot token, then pages every guild's
 channels and message history (snowflake `before`/`after` cursors), validating each
@@ -104,8 +120,10 @@ ingest/
   discord/             auth (Bot token + REST/gateway redirect) · historical (snowflake
                        pagination) · live (gateway IDENTIFY→events) · run
   google/              auth (SA JWT-bearer + DWD) · directory (enumerate users) ·
-                       gmail · calendar (events + syncToken) · transport (429) · run
+                       gmail · calendar (events + syncToken) · drive (files/comments/
+                       revisions/export + changes feed) · transport (429) · run
   notion/              client (Bearer + Notion-Version + 429) · historical · run
+  jira/                client (HTTP Basic + 429) · historical (projects + /search/jql) · run
 scripts/
   fetch_specs.py       download + pin official OpenAPI specs
   selfcheck_slack.py   dev harness: end-to-end Slack pipeline against a throwaway server
@@ -125,3 +143,8 @@ scripts/
   expired-token paths, discovery-schema validation, report). Live push deferred.
 - **Notion:** built (internal-integration auth, search/enumerate → paginate → full-object
   fetch, 429/Retry-After handling, schema, report). Live webhook deferred.
+- **Google Drive:** built (SA+DWD auth, My Drive + Shared Drive file backfill, comments/
+  revisions, Google-native export, incremental `changes` feed, discovery-schema validation,
+  report). Live push deferred.
+- **Jira:** built (HTTP Basic, per-install base URL, project enumeration, `/search/jql`
+  token pagination + changelog, schema, report). Live webhook deferred.
