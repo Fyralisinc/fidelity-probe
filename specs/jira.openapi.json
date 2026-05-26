@@ -1,0 +1,120 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Jira Cloud REST API v3 (hand-authored from the official reference)",
+    "version": "3",
+    "description": "Atlassian's published swagger lags the 2025 issue-search migration, so the read endpoints this client uses are encoded here from https://developer.atlassian.com/cloud/jira/platform/rest/v3/ . Note the contrast: /project/search uses the classic startAt/total/isLast/values model, while the new /search/jql uses token pagination (nextPageToken/isLast, NO startAt/total). additionalProperties is permitted (Jira returns many more fields)."
+  },
+  "servers": [{ "url": "https://your-site.atlassian.net" }],
+  "paths": {
+    "/rest/api/3/project/search": {
+      "get": {
+        "responses": {
+          "200": { "description": "paginated projects",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectSearchResults" } } } }
+        }
+      }
+    },
+    "/rest/api/3/search/jql": {
+      "get": {
+        "responses": {
+          "200": { "description": "token-paginated issue search",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResults" } } } }
+        }
+      },
+      "post": {
+        "responses": {
+          "200": { "description": "token-paginated issue search",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResults" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProjectSearchResults": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["maxResults", "startAt", "total", "isLast", "values"],
+        "properties": {
+          "self": { "type": "string" },
+          "nextPage": { "type": "string" },
+          "maxResults": { "type": "integer" },
+          "startAt": { "type": "integer" },
+          "total": { "type": "integer" },
+          "isLast": { "type": "boolean" },
+          "values": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "key", "name"],
+        "properties": {
+          "self": { "type": "string" },
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "projectTypeKey": { "type": "string" }
+        }
+      },
+      "SearchResults": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Response of GET/POST /rest/api/3/search/jql. Token-paginated: nextPageToken is present only when more pages remain; isLast signals the final page. There is intentionally NO startAt or total.",
+        "required": ["issues"],
+        "properties": {
+          "issues": { "type": "array", "items": { "$ref": "#/components/schemas/Issue" } },
+          "nextPageToken": { "type": "string" },
+          "isLast": { "type": "boolean" }
+        }
+      },
+      "Issue": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "key"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "self": { "type": "string" },
+          "fields": { "type": "object" },
+          "changelog": { "$ref": "#/components/schemas/Changelog" }
+        }
+      },
+      "Changelog": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["histories"],
+        "properties": {
+          "startAt": { "type": "integer" },
+          "maxResults": { "type": "integer" },
+          "total": { "type": "integer" },
+          "histories": { "type": "array", "items": { "$ref": "#/components/schemas/ChangeHistory" } }
+        }
+      },
+      "ChangeHistory": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "items"],
+        "properties": {
+          "id": { "type": "string" },
+          "created": { "type": "string" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/ChangeItem" } }
+        }
+      },
+      "ChangeItem": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["field"],
+        "properties": {
+          "field": { "type": "string" },
+          "fieldtype": { "type": "string" },
+          "from": { "type": ["string", "null"] },
+          "fromString": { "type": ["string", "null"] },
+          "to": { "type": ["string", "null"] },
+          "toString": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
