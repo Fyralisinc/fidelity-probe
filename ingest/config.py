@@ -196,6 +196,7 @@ class DiscordConfig:
 GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 DIRECTORY_SCOPE = "https://www.googleapis.com/auth/admin.directory.user.readonly"
+DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 
 
 @dataclass(frozen=True)
@@ -219,6 +220,8 @@ class GoogleConfig:
     directory_token_url: str
     calendar_base: str
     calendar_token_url: str
+    drive_base: str
+    drive_token_url: str
     jwks_url: str | None
 
     @classmethod
@@ -249,6 +252,11 @@ class GoogleConfig:
                 "CALENDAR_API_BASE_URL", "https://www.googleapis.com/calendar/v3").rstrip("/"),
             calendar_token_url=os.environ.get(
                 "CALENDAR_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+            drive_base=os.environ.get(
+                "GOOGLE_DRIVE_API_BASE_URL", "https://www.googleapis.com/drive/v3").rstrip("/"),
+            drive_token_url=os.environ.get(
+                "GOOGLE_DRIVE_TOKEN_URL",
+                os.environ.get("GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token")),
             jwks_url=os.environ.get("GMAIL_JWKS_URL",
                                     "https://www.googleapis.com/oauth2/v3/certs"),
         )
@@ -285,6 +293,38 @@ class NotionConfig:
         if not self.token:
             raise ConfigError("NOTION_TOKEN is required (the internal integration token).")
         return self.token
+
+
+# --------------------------------------------------------------------------- Jira
+
+
+@dataclass(frozen=True)
+class JiraConfig:
+    """Atlassian Cloud Jira. Unlike the others there's no global host: each install has
+    its own site base URL (https://<site>.atlassian.net). Auth is HTTP Basic with
+    base64(account_email:api_token)."""
+    base_url: str | None  # the site base, e.g. https://acme.atlassian.net (or the mock)
+    account_email: str | None
+    api_token: str | None
+
+    @classmethod
+    def from_env(cls) -> "JiraConfig":
+        # JIRA_API_BASE_URL overrides the per-install site base (used to point at the mock);
+        # otherwise the per-install JIRA_BASE_URL site is used. No global production default.
+        base = os.environ.get("JIRA_API_BASE_URL") or os.environ.get("JIRA_BASE_URL")
+        return cls(
+            base_url=base.rstrip("/") if base else None,
+            account_email=os.environ.get("JIRA_ACCOUNT_EMAIL"),
+            api_token=os.environ.get("JIRA_API_TOKEN"),
+        )
+
+    def require_auth(self) -> tuple[str, str, str]:
+        missing = [n for n, v in (("JIRA_API_BASE_URL/JIRA_BASE_URL", self.base_url),
+                                  ("JIRA_ACCOUNT_EMAIL", self.account_email),
+                                  ("JIRA_API_TOKEN", self.api_token)) if not v]
+        if missing:
+            raise ConfigError("Jira ingestion requires " + ", ".join(missing) + ".")
+        return self.base_url, self.account_email, self.api_token  # type: ignore[return-value]
 
 
 # --------------------------------------------------------------------------- Shared

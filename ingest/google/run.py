@@ -4,6 +4,7 @@ from __future__ import annotations
 from ..config import GoogleConfig
 from ..fidelity import FidelityReport
 from . import calendar as calendar_slice
+from . import drive as drive_slice
 from . import gmail as gmail_slice
 
 
@@ -28,4 +29,11 @@ def run_calendar(max_users: int | None = None) -> FidelityReport:
     cfg = GoogleConfig.from_env()
     report = _new_report("calendar", cfg.calendar_base)
     calendar_slice.run_historical(cfg, report, max_users=max_users)
+    return report
+
+
+def run_drive(max_users: int | None = None) -> FidelityReport:
+    cfg = GoogleConfig.from_env()
+    report = _new_report("drive", cfg.drive_base)
+    drive_slice.run_historical(cfg, report, max_users=max_users)
     return report

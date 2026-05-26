@@ -36,8 +36,11 @@ _SPEC_FILES = {
     "gmail": "gmail.discovery.json",
     "calendar": "calendar.discovery.json",
     "admin_directory": "admin_directory.discovery.json",
-    # Notion: hand-authored from the official API reference (no official OpenAPI exists).
+    "drive": "drive.discovery.json",
+    # Notion / Jira: hand-authored from the official API reference (no usable official
+    # OpenAPI to pin — Jira's published swagger lags the 2025 /search/jql migration).
     "notion": "notion.openapi.json",
+    "jira": "jira.openapi.json",
 }
 
 _MAX_ERRORS = 3

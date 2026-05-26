@@ -45,6 +45,9 @@ SPECS = {
     "admin_directory.discovery.json": (
         "https://www.googleapis.com/discovery/v1/apis/admin/directory_v1/rest"
     ),
+    "drive.discovery.json": (
+        "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
+    ),
     # Notion publishes no official OpenAPI document; its response contracts are taken
     # from the official API reference and hand-authored into specs/notion.openapi.json
     # (committed, not fetched here).
