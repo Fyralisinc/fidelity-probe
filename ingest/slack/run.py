@@ -20,9 +20,10 @@ def _new_report(cfg: SlackConfig) -> FidelityReport:
 def run_historical(max_channels: int | None = None) -> FidelityReport:
     cfg = SlackConfig.from_env()
     report = _new_report(cfg)
-    token = auth.acquire_token(cfg, report)
-    client = auth.make_web_client(token, cfg, report)
-    historical.run_historical(client, report, max_channels=max_channels)
+    tokens = auth.acquire_tokens(cfg, report)
+    bot_client = auth.make_web_client(tokens.bot, cfg, report)
+    user_client = auth.make_web_client(tokens.user, cfg, report) if tokens.user else None
+    historical.run_historical(bot_client, user_client, report, max_channels=max_channels)
     return report
 
 

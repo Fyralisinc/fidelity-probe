@@ -47,9 +47,22 @@ def register(server: WebhookServer, cfg: SlackConfig, report: FidelityReport) ->
 
         if kind == "event_callback":
             ev = body.get("event") or {}
-            summary = f"{ev.get('type')} ch={ev.get('channel')} ts={ev.get('ts')}"
+            ctype = ev.get("channel_type")
+            summary = (f"{ev.get('type')} channel_type={ctype} "
+                       f"ch={ev.get('channel')} ts={ev.get('ts')}")
             report.record_live_event(ev.get("type") or "event", summary)
             report.count(f"event:{ev.get('type')}", 1)
+            # Every real message event carries channel_type (channel|im|mpim|group)
+            # — it's the only field distinguishing a DM observation from a channel
+            # one. A message event without it is a divergence.
+            if ev.get("type") == "message":
+                report.count(f"channel_type:{ctype}", 1)
+                report.record_protocol(
+                    "events.message.has_channel_type",
+                    ctype in ("channel", "im", "mpim", "group"),
+                    f"message event lacks a valid channel_type (got {ctype!r})"
+                    if ctype not in ("channel", "im", "mpim", "group") else "",
+                )
             return Response("", status=200)
 
         report.record_live_event(kind or "unknown", "non-event payload")

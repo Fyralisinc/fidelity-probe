@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import threading
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -35,6 +36,17 @@ from slack_sdk.oauth import AuthorizeUrlGenerator
 
 from ..config import SlackConfig
 from ..fidelity import FidelityReport
+
+
+@dataclass(frozen=True)
+class TokenSet:
+    """The two tokens an OAuth v2 install yields.
+
+    ``bot`` (xoxb) reads channels; ``user`` (xoxp) reads the consenting human's
+    DMs. ``user`` is None when no user scopes were granted (a bot-only install).
+    """
+    bot: str
+    user: str | None
 
 
 class _RecordingRateLimitHandler(RateLimitErrorRetryHandler):
@@ -75,17 +87,27 @@ def make_web_client(token: str, cfg: SlackConfig, report: FidelityReport) -> Web
 
 def build_authorize_url(cfg: SlackConfig, state: str = "fidelity") -> str:
     client_id, _, redirect_uri = cfg.require_oauth()
+    # Request BOTH bot scopes (`scope`) and user scopes (`user_scope`): the user
+    # scopes are what cause Slack to mint the xoxp user token used for DM reads.
     generator = AuthorizeUrlGenerator(
         client_id=client_id,
         scopes=list(cfg.scopes),
+        user_scopes=list(cfg.user_scopes),
         redirect_uri=redirect_uri,
         authorization_url=cfg.authorize_url,
     )
     return generator.generate(state=state)
 
 
-def exchange_code(cfg: SlackConfig, code: str, report: FidelityReport) -> str:
-    """Exchange an OAuth code for a bot token via oauth.v2.access, validating the response."""
+def exchange_code(cfg: SlackConfig, code: str, report: FidelityReport) -> TokenSet:
+    """Exchange an OAuth code for the bot + user tokens via oauth.v2.access.
+
+    Validates the response against the official spec and asserts the two-token
+    contract: when user scopes were requested, ``authed_user.access_token`` must
+    be a DISTINCT xoxp token (not the bot token). A missing/duplicate user token
+    is a protocol divergence — that's exactly the failure that would let DM
+    ingestion pass against a mock yet break against real Slack.
+    """
     client_id, client_secret, redirect_uri = cfg.require_oauth()
     # oauth.v2.access does not require a token; base_url is the only configured knob.
     client = WebClient(base_url=cfg.base_url)
@@ -98,13 +120,36 @@ def exchange_code(cfg: SlackConfig, code: str, report: FidelityReport) -> str:
     from ..schemas import SpecValidator  # local import avoids a cycle at module load
     SpecValidator("slack").validate_response(resp.data, "/oauth.v2.access", report,
                                              label="oauth.v2.access")
-    token = resp.get("access_token") or (resp.get("authed_user") or {}).get("access_token")
-    if not token:
-        raise RuntimeError("oauth.v2.access returned no access_token")
-    return token
+    bot = resp.get("access_token")
+    authed_user = resp.get("authed_user") or {}
+    user = authed_user.get("access_token")
+    if not bot:
+        raise RuntimeError("oauth.v2.access returned no bot access_token")
+
+    if cfg.user_scopes:
+        # We asked for user scopes, so a faithful Slack returns a distinct xoxp.
+        report.record_protocol(
+            "oauth.two_token.user_token_present", bool(user),
+            "user_scope was requested but authed_user.access_token is absent — DM "
+            "ingestion would have no token" if not user else "xoxp user token issued",
+        )
+        if user:
+            report.record_protocol(
+                "oauth.two_token.tokens_distinct", user != bot,
+                "authed_user.access_token equals the bot token (real Slack issues a "
+                "DISTINCT xoxp user token)" if user == bot else "bot/user tokens are distinct",
+            )
+            report.record_protocol(
+                "oauth.two_token.user_token_prefix", user.startswith("xoxp-"),
+                f"user token does not start with xoxp- ({user[:6]}…)"
+                if not user.startswith("xoxp-") else "user token is xoxp-",
+            )
+    report.auth["bot_token_prefix"] = bot[:5]
+    report.auth["user_token_prefix"] = (user or "")[:5] or "(none)"
+    return TokenSet(bot=bot, user=user)
 
 
-def _capture_code_via_callback(cfg: SlackConfig, report: FidelityReport) -> str:
+def _capture_code_via_callback(cfg: SlackConfig, report: FidelityReport) -> TokenSet:
     """One-shot local HTTP server that captures the OAuth redirect's ?code=."""
     redirect = cfg.require_oauth()[2]
     parts = urlsplit(redirect)
@@ -137,10 +182,18 @@ def _capture_code_via_callback(cfg: SlackConfig, report: FidelityReport) -> str:
     return exchange_code(cfg, captured["code"], report)
 
 
-def acquire_token(cfg: SlackConfig, report: FidelityReport) -> str:
+def acquire_tokens(cfg: SlackConfig, report: FidelityReport) -> TokenSet:
+    """Obtain the (bot, user) token pair the two-token model needs.
+
+    Pre-issued tokens win (SLACK_BOT_TOKEN [+ SLACK_USER_TOKEN]); otherwise we run
+    the real OAuth v2 flow, which mints both.
+    """
     if cfg.bot_token:
-        report.auth["method"] = "pre-issued bot token"
-        return cfg.bot_token
+        report.auth["method"] = "pre-issued tokens"
+        if not cfg.user_token:
+            report.note("SLACK_USER_TOKEN not set — DM (im/mpim) ingestion will be "
+                        "skipped; only the channel path is exercised.")
+        return TokenSet(bot=cfg.bot_token, user=cfg.user_token)
     code = os.environ.get("SLACK_OAUTH_CODE")
     if code:
         report.auth["method"] = "oauth.v2.access (code from env)"

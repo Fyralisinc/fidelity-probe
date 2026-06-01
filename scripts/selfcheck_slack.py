@@ -42,19 +42,56 @@ class FakeSlack(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _cursor(self) -> str:
+    def _params(self) -> dict:
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length).decode() if length else ""
         params = parse_qs(urlsplit(self.path).query)
         params.update(parse_qs(raw))
-        return (params.get("cursor") or [""])[0]
+        return {k: (v[0] if v else "") for k, v in params.items()}
+
+    def _is_user_token(self) -> bool:
+        return (self.headers.get("Authorization") or "").startswith("Bearer xoxp-")
 
     def do_POST(self):  # noqa: N802
         path = urlsplit(self.path).path
-        cursor = self._cursor()
+        params = self._params()
+        cursor = params.get("cursor", "")
+        types = params.get("types", "")
+        channel = params.get("channel", "")
+        user_token = self._is_user_token()
 
         if path.endswith("/auth.test"):
-            return self._send(_example("/auth.test"))
+            payload = _example("/auth.test")
+            if user_token:
+                # A user token authenticates AS the human: user_id present, NO bot_id.
+                payload.pop("bot_id", None)
+            else:
+                payload["bot_id"] = payload.get("bot_id") or "B0SELFBOT0"
+            return self._send(payload)
+
+        if channel.startswith(("D", "G")):
+            # A DM/MPIM read: only the user token may read it. A bot token is
+            # refused exactly as real Slack refuses it.
+            if not user_token:
+                return self._send({"ok": False, "error": "not_in_channel"})
+            payload = _example("/conversations.history")
+            payload["response_metadata"] = {"next_cursor": ""}
+            return self._send(payload)
+
+        if path.endswith("/conversations.list") and ("im" in types or "mpim" in types):
+            # User-token DM listing: an im (counterpart `user`, no name) + an mpim.
+            return self._send({
+                "ok": True,
+                "channels": [
+                    {"id": "D0SELFDM01", "created": 1609459200, "is_im": True,
+                     "is_org_shared": False, "user": "U0COUNTER0", "is_user_deleted": False,
+                     "priority": 0},
+                    {"id": "G0SELFMP01", "created": 1609459200, "is_mpim": True,
+                     "is_group": False, "is_im": False, "name": "mpdm-a--b--c-1",
+                     "is_private": True},
+                ],
+                "response_metadata": {"next_cursor": ""},
+            })
 
         if path.endswith("/users.list"):
             payload = _example("/users.list")
@@ -95,6 +132,7 @@ def main() -> int:
 
     os.environ["SLACK_BASE_URL"] = f"http://127.0.0.1:{port}/api/"
     os.environ["SLACK_BOT_TOKEN"] = "xoxb-selfcheck"
+    os.environ["SLACK_USER_TOKEN"] = "xoxp-selfcheck"   # exercises the DM (im/mpim) path
     os.environ["SLACK_SIGNING_SECRET"] = "selfcheck-secret"
 
     from ingest.slack import run as slack_run
@@ -119,11 +157,27 @@ def main() -> int:
         failures.append(f"users.list pagination not exercised (pages={report.pages.get('users.list')})")
     if report.pages.get("conversations.replies", 0) < 1:
         failures.append("conversations.replies not exercised")
+    # Two-token DM path coverage.
+    if report.object_counts.get("im", 0) <= 0:
+        failures.append("no im (1:1 DM) ingested via user token")
+    if report.object_counts.get("mpim", 0) <= 0:
+        failures.append("no mpim (group DM) ingested via user token")
+    proto = {c["check"]: c["ok"] for c in report.protocol_checks}
+    if not proto.get("two_token.bot_refused_on_dm"):
+        failures.append("bot token was NOT refused on a DM (false-green guard failed)")
+    if not proto.get("user_token.no_bot_id"):
+        failures.append("auth.test on user token wrongly carried bot_id")
+    if not proto.get("im.object.has_user"):
+        failures.append("im object missing `user` counterpart")
+    if not proto.get("im.object.no_name"):
+        failures.append("im object wrongly carried a `name`")
     if report.divergences:
         failures.append(f"unexpected divergences: {[d.line() for d in report.divergences]}")
 
     print(f"  users={report.object_counts.get('user')} channels={report.object_counts.get('channel')} "
           f"messages={report.object_counts.get('message')} replies={report.object_counts.get('reply')}")
+    print(f"  im={report.object_counts.get('im')} mpim={report.object_counts.get('mpim')} "
+          f"bot_refused_on_dm={proto.get('two_token.bot_refused_on_dm')}")
     print(f"  pages={report.pages}")
     print(f"  divergences={len(report.divergences)}")
 
@@ -147,7 +201,8 @@ def main() -> int:
 
     # event_callback (valid signature)
     body2 = json.dumps({"type": "event_callback",
-                        "event": {"type": "message", "channel": "C1", "ts": "1.2", "text": "hi"}}).encode()
+                        "event": {"type": "message", "channel": "C1", "channel_type": "channel",
+                                  "ts": "1.2", "text": "hi"}}).encode()
     ts2 = str(int(time.time()))
     sig2 = verifier.generate_signature(timestamp=ts2, body=body2.decode())
     client.post(live.ENDPOINT, data=body2,

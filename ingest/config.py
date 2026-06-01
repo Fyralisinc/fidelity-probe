@@ -53,11 +53,17 @@ class SlackConfig:
     client_id: str | None
     client_secret: str | None
     redirect_uri: str | None
+    # BOT scopes (`scope` at authorize) -> the xoxb token that reads channels.
     scopes: tuple[str, ...]
-    # Optional pre-issued bot token: lets you skip the interactive OAuth dance when
-    # the mock/real service just hands you a token. The OAuth path is still the
-    # primary, fully-implemented flow.
+    # USER scopes (`user_scope` at authorize) -> the xoxp token that reads the
+    # consenting human's 1:1 DMs (im) and group DMs (mpim). Slack forbids a bot
+    # token from reading human-human DMs, so DM ingestion is a separate token.
+    user_scopes: tuple[str, ...]
+    # Optional pre-issued tokens: skip the interactive OAuth dance when the service
+    # just hands you tokens. The OAuth path is still the primary flow.
+    # bot_token = xoxb (channels); user_token = xoxp (DMs).
     bot_token: str | None
+    user_token: str | None
     signing_secret: str | None
 
     @classmethod
@@ -68,11 +74,22 @@ class SlackConfig:
         authorize_url = os.environ.get(
             "SLACK_AUTHORIZE_URL", _origin_of(base_url) + "/oauth/v2/authorize"
         )
+        # Bot scopes cover public/private channels + workspace metadata. They
+        # intentionally EXCLUDE im:*/mpim:* — those are user scopes, because a bot
+        # token cannot read human DMs.
         scopes = tuple(
             s.strip()
             for s in os.environ.get(
                 "SLACK_SCOPES",
                 "channels:read,channels:history,groups:read,groups:history,"
+                "users:read,team:read",
+            ).split(",")
+            if s.strip()
+        )
+        user_scopes = tuple(
+            s.strip()
+            for s in os.environ.get(
+                "SLACK_USER_SCOPES",
                 "im:read,im:history,mpim:read,mpim:history,users:read",
             ).split(",")
             if s.strip()
@@ -84,7 +101,9 @@ class SlackConfig:
             client_secret=os.environ.get("SLACK_CLIENT_SECRET"),
             redirect_uri=os.environ.get("SLACK_REDIRECT_URI"),
             scopes=scopes,
+            user_scopes=user_scopes,
             bot_token=os.environ.get("SLACK_BOT_TOKEN"),
+            user_token=os.environ.get("SLACK_USER_TOKEN"),
             signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
         )
 
