@@ -25,13 +25,17 @@ def run_historical(max_repos: int | None = None) -> FidelityReport:
     return report
 
 
-def run_live() -> FidelityReport:
+def run_live(run_seconds: float | None = None) -> FidelityReport:
     cfg = GitHubConfig.from_env()
     report = _new_report(cfg)
     server = WebhookServer("github-events")
     live.register(server, cfg, report)
     wcfg = WebhookConfig.from_env()
     print(f"GitHub webhook listener on http://{wcfg.host}:{wcfg.port}{live.ENDPOINT}")
+    if run_seconds is not None:
+        print(f"Running for {run_seconds}s, then writing the fidelity report.")
+        server.serve_for(wcfg, run_seconds)
+        return report
     print("Ctrl-C to stop and write the fidelity report.")
     try:
         server.run(wcfg)

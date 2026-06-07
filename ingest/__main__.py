@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.provider == "github":
         from .github import run as github_run
         report = (github_run.run_historical(max_repos=args.max_repos)
-                  if args.mode == "historical" else github_run.run_live())
+                  if args.mode == "historical" else github_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
     if args.provider == "discord":

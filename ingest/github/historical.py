@@ -34,6 +34,10 @@ from .auth import _std_headers
 # cursor-following path is exercised end-to-end even when a repo holds few items.
 _PER_PAGE = 100
 _PROBE_PAGE = 3
+# Proving multi-page Link traversal needs only a handful of hops; walking a large
+# repo's full history at per_page=3 is needlessly slow and, against real GitHub,
+# rate-limit-hostile. Stop once the chain is proven over this many pages.
+_PROBE_MAX_PAGES = 4
 
 # Headers the GitHub REST contract guarantees on (essentially) every response. Their
 # absence means the target isn't speaking GitHub's documented protocol, so we audit them.
@@ -234,7 +238,7 @@ def verify_pagination_contract(gh: Github, repos: list[dict], sv: SpecValidator,
                 sv.validate_response(data, "/repos/{owner}/{repo}/commits", report,
                                      label="commits")
                 nxt = _next_link(_Headers(raw_headers))
-                if nxt is None:
+                if nxt is None or pages >= _PROBE_MAX_PAGES:
                     break
                 url, query = nxt
         except GithubException as e:
