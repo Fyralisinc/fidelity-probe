@@ -23,3 +23,24 @@ class WebhookServer:
         cfg = cfg or WebhookConfig.from_env()
         # threaded so a slow handler can't wedge the listener; debug off = prod-like.
         self.app.run(host=cfg.host, port=cfg.port, threaded=True, debug=False)
+
+    def serve_for(self, cfg: WebhookConfig | None, seconds: float) -> None:
+        """Serve for a fixed wall-clock budget, then shut down cleanly.
+
+        Lets a live listener run unattended (e.g. driven by an emitter) and stop
+        on its own so the fidelity report is written without a manual Ctrl-C.
+        """
+        import threading
+        import time
+
+        from werkzeug.serving import make_server
+
+        cfg = cfg or WebhookConfig.from_env()
+        srv = make_server(cfg.host, cfg.port, self.app, threaded=True)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            time.sleep(seconds)
+        finally:
+            srv.shutdown()
+            thread.join(timeout=5)
