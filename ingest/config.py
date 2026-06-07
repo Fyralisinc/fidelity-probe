@@ -297,6 +297,7 @@ class NotionConfig:
     api_base: str  # e.g. https://api.notion.com
     token: str | None
     version: str  # Notion-Version header, pinned
+    webhook_verification_token: str | None  # App-level HMAC secret for inbound webhooks
 
     @classmethod
     def from_env(cls) -> "NotionConfig":
@@ -306,12 +307,19 @@ class NotionConfig:
                       or "https://api.notion.com").rstrip("/"),
             token=os.environ.get("NOTION_TOKEN") or os.environ.get("NOTION_BOT_TOKEN"),
             version=os.environ.get("NOTION_VERSION", "2022-06-28"),
+            webhook_verification_token=os.environ.get("NOTION_WEBHOOK_VERIFICATION_TOKEN"),
         )
 
     def require_token(self) -> str:
         if not self.token:
             raise ConfigError("NOTION_TOKEN is required (the internal integration token).")
         return self.token
+
+    def require_webhook_verification_token(self) -> str:
+        if not self.webhook_verification_token:
+            raise ConfigError("NOTION_WEBHOOK_VERIFICATION_TOKEN is required for the live slice "
+                              "(the App-level secret webhook events are signed with).")
+        return self.webhook_verification_token
 
 
 # --------------------------------------------------------------------------- Jira
