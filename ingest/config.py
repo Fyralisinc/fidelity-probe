@@ -318,6 +318,44 @@ class NotionConfig:
         return self.token
 
 
+# --------------------------------------------------------------------------- QuickBooks
+
+
+@dataclass(frozen=True)
+class QuickBooksConfig:
+    """Intuit QuickBooks Online (QBO) Accounting API v3. OAuth Bearer + realm id;
+    the realm is the {realmId} path segment. base_url defaults to the production
+    host; point it at the mock via QUICKBOOKS_API_BASE_URL."""
+    base_url: str
+    realm_id: str | None
+    access_token: str | None
+    minorversion: str
+    webhook_verifier: str | None  # the webhook verifier token (intuit-signature HMAC key)
+
+    @classmethod
+    def from_env(cls) -> "QuickBooksConfig":
+        return cls(
+            base_url=(os.environ.get("QUICKBOOKS_API_BASE_URL")
+                      or "https://quickbooks.api.intuit.com").rstrip("/"),
+            realm_id=os.environ.get("QUICKBOOKS_REALM_ID"),
+            access_token=os.environ.get("QUICKBOOKS_ACCESS_TOKEN"),
+            minorversion=os.environ.get("QUICKBOOKS_MINORVERSION", "75"),
+            webhook_verifier=os.environ.get("QUICKBOOKS_WEBHOOK_VERIFIER"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        missing = [n for n, v in (("QUICKBOOKS_REALM_ID", self.realm_id),
+                                  ("QUICKBOOKS_ACCESS_TOKEN", self.access_token)) if not v]
+        if missing:
+            raise ConfigError("QuickBooks ingestion requires " + ", ".join(missing) + ".")
+        return self.realm_id, self.access_token  # type: ignore[return-value]
+
+    def require_webhook_verifier(self) -> str:
+        if not self.webhook_verifier:
+            raise ConfigError("QUICKBOOKS_WEBHOOK_VERIFIER is required to verify webhooks.")
+        return self.webhook_verifier
+
+
 # --------------------------------------------------------------------------- Jira
 
 
