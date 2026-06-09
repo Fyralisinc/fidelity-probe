@@ -242,6 +242,8 @@ class GoogleConfig:
     drive_base: str
     drive_token_url: str
     jwks_url: str | None
+    pubsub_oidc_audience: str | None   # expected `aud` on the Pub/Sub push OIDC JWT
+    pubsub_oidc_sa: str | None         # expected `email` claim (the push service account)
 
     @classmethod
     def from_env(cls) -> "GoogleConfig":
@@ -278,6 +280,8 @@ class GoogleConfig:
                 os.environ.get("GMAIL_TOKEN_URL", "https://oauth2.googleapis.com/token")),
             jwks_url=os.environ.get("GMAIL_JWKS_URL",
                                     "https://www.googleapis.com/oauth2/v3/certs"),
+            pubsub_oidc_audience=os.environ.get("GMAIL_PUBSUB_OIDC_AUDIENCE"),
+            pubsub_oidc_sa=os.environ.get("GMAIL_PUBSUB_OIDC_SA"),
         )
 
     def require_identity(self) -> tuple[str, str, str]:
