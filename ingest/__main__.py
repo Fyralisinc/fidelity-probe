@@ -65,7 +65,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Gmail / Calendar / Drive / Notion / Jira: read/backfill only — live push/webhook
     # delivery isn't wired yet.
-    if args.provider in ("gmail", "calendar", "drive", "notion", "jira"):
+    if args.provider == "jira":
+        from .jira import run as jira_run
+        report = (jira_run.run_historical(max_projects=args.max_projects)
+                  if args.mode == "historical" else jira_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    if args.provider in ("gmail", "calendar", "drive", "notion"):
         if args.mode != "historical":
             print(f"{args.provider} has no live mode yet (push/webhook delivery is not "
                   f"wired); run `historical`.", file=sys.stderr)
@@ -73,9 +79,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.provider == "notion":
             from .notion import run as notion_run
             return _finish(notion_run.run_historical())
-        if args.provider == "jira":
-            from .jira import run as jira_run
-            return _finish(jira_run.run_historical(max_projects=args.max_projects))
         from .google import run as google_run
         runner = {"gmail": google_run.run_gmail, "calendar": google_run.run_calendar,
                   "drive": google_run.run_drive}[args.provider]

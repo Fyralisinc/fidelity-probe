@@ -325,6 +325,7 @@ class JiraConfig:
     base_url: str | None  # the site base, e.g. https://acme.atlassian.net (or the mock)
     account_email: str | None
     api_token: str | None
+    webhook_secret: str | None  # the secret a dynamic webhook is registered with (HMAC key)
 
     @classmethod
     def from_env(cls) -> "JiraConfig":
@@ -335,6 +336,7 @@ class JiraConfig:
             base_url=base.rstrip("/") if base else None,
             account_email=os.environ.get("JIRA_ACCOUNT_EMAIL"),
             api_token=os.environ.get("JIRA_API_TOKEN"),
+            webhook_secret=os.environ.get("JIRA_WEBHOOK_SECRET"),
         )
 
     def require_auth(self) -> tuple[str, str, str]:
@@ -344,6 +346,11 @@ class JiraConfig:
         if missing:
             raise ConfigError("Jira ingestion requires " + ", ".join(missing) + ".")
         return self.base_url, self.account_email, self.api_token  # type: ignore[return-value]
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("JIRA_WEBHOOK_SECRET is required to verify webhook deliveries.")
+        return self.webhook_secret
 
 
 # --------------------------------------------------------------------------- Shared
