@@ -63,8 +63,12 @@ def main(argv: list[str] | None = None) -> int:
                   else discord_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
-    # Gmail / Calendar / Drive / Notion / Jira: read/backfill only — live push/webhook
-    # delivery isn't wired yet.
+    if args.provider == "notion":
+        from .notion import run as notion_run
+        report = (notion_run.run_historical() if args.mode == "historical"
+                  else notion_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
     if args.provider == "jira":
         from .jira import run as jira_run
         report = (jira_run.run_historical(max_projects=args.max_projects)
@@ -84,14 +88,12 @@ def main(argv: list[str] | None = None) -> int:
                   else google_run.run_gmail_live(run_seconds=args.seconds))
         return _finish(report)
 
-    if args.provider in ("calendar", "drive", "notion"):
+    # Calendar / Drive: read/backfill only — live push/webhook delivery isn't wired.
+    if args.provider in ("calendar", "drive"):
         if args.mode != "historical":
             print(f"{args.provider} has no live mode yet (push/webhook delivery is not "
                   f"wired); run `historical`.", file=sys.stderr)
             return 2
-        if args.provider == "notion":
-            from .notion import run as notion_run
-            return _finish(notion_run.run_historical())
         from .google import run as google_run
         runner = {"calendar": google_run.run_calendar, "drive": google_run.run_drive}[args.provider]
         return _finish(runner(max_users=args.max_users))
