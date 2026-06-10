@@ -978,6 +978,65 @@ class AwsConfig:
         return self.access_key_id, self.secret_access_key  # type: ignore[return-value]
 
 
+# --------------------------------------------------------------------------- Telegram
+
+
+@dataclass(frozen=True)
+class TelegramConfig:
+    """Telegram (MTProto user-account) ingestion. The real transport is the
+    MTProto encrypted binary protocol consumed through Telethon — there is no HTTP
+    REST API and no Bot API (the Bot API can't read history). Reproducing the
+    binary wire is infeasible, so the mock reproduces the MTProto METHOD contract
+    over a transport substitution: HTTP for the request/response reads
+    (``messages.getHistory`` backward ``offset_id`` paging, ``messages.getDialogs``,
+    ``users.getFullUser``) + a WebSocket updates gateway for the live push
+    (``updateNewMessage`` / ``updateEditMessage`` — no webhook, no HMAC; the
+    authenticated connection is the trust boundary, like Discord's gateway).
+
+    The durable credential is a persisted Telethon ``StringSession`` (it wraps the
+    DH-negotiated ``auth_key``; never sent per-request on the real wire — here it
+    is presented on each read + once on the WS connect, the substitution).
+    ``account_label`` is the install namespace that scopes each observation's
+    edit-versioned ``external_id`` ``telegram:{label}:{dialog}:{msg}:{edit|none}``."""
+    base_url: str             # the mock HTTP base (TELEGRAM_API_BASE_URL)
+    gateway_url: str | None   # the WS updates base (TELEGRAM_GATEWAY_URL); else derived
+    session: str | None       # the persisted StringSession credential
+    account_label: str | None  # the install namespace for external_id
+
+    @classmethod
+    def from_env(cls) -> "TelegramConfig":
+        base = (os.environ.get("TELEGRAM_API_BASE_URL") or "").rstrip("/")
+        return cls(
+            base_url=base,
+            gateway_url=(os.environ.get("TELEGRAM_GATEWAY_URL") or None),
+            session=os.environ.get("TELEGRAM_SESSION"),
+            account_label=os.environ.get("TELEGRAM_ACCOUNT_LABEL"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        missing = [n for n, v in (("TELEGRAM_API_BASE_URL", self.base_url),
+                                  ("TELEGRAM_SESSION", self.session)) if not v]
+        if missing:
+            raise ConfigError("Telegram ingestion requires " + ", ".join(missing)
+                              + " (the mock base URL + the persisted StringSession).")
+        return self.base_url, self.session  # type: ignore[return-value]
+
+    def ws_url(self) -> str:
+        """The updates-gateway WS URL (TELEGRAM_GATEWAY_URL, else base_url with
+        http→ws + /gateway)."""
+        if self.gateway_url:
+            return self.gateway_url
+        b = self.base_url
+        if b.startswith("https://"):
+            b = "wss://" + b[len("https://"):]
+        elif b.startswith("http://"):
+            b = "ws://" + b[len("http://"):]
+        return b + "/gateway"
+
+    def namespace(self) -> str:
+        return self.account_label or "telegram"
+
+
 # --------------------------------------------------------------------------- Shared
 
 
