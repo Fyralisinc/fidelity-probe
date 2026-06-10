@@ -844,6 +844,48 @@ class CartaConfig:
         return self.base_url, self.issuer_id
 
 
+# --------------------------------------------------------------------------- LinkedIn
+
+
+@dataclass(frozen=True)
+class LinkedinConfig:
+    """LinkedIn organization marketing / Community-Management API (``/rest/``). Auth is
+    OAuth 2.0 — a ``LINKEDIN_ACCESS_TOKEN`` (3-legged member-authorized Bearer) sent as
+    ``Authorization: Bearer``; every versioned ``/rest/`` call also needs a
+    ``Linkedin-Version: YYYYMM`` header and ``X-Restli-Protocol-Version: 2.0.0``.
+    base_url defaults to the production host ``https://api.linkedin.com`` (the
+    ``/rest`` segment is part of each path, NOT the base); point it at the mock via
+    LINKEDIN_API_BASE_URL. ``organization_urn`` (``urn:li:organization:{id}``) is the
+    tenant — it scopes every read and namespaces each observation's ``external_id``.
+    LinkedIn org data is POLL-ONLY (NO webhook of any kind), so there is no webhook
+    secret and no live slice."""
+    base_url: str
+    organization_urn: str | None
+    access_token: str | None
+    version: str
+
+    @classmethod
+    def from_env(cls) -> "LinkedinConfig":
+        return cls(
+            base_url=(os.environ.get("LINKEDIN_API_BASE_URL")
+                      or "https://api.linkedin.com").rstrip("/"),
+            organization_urn=os.environ.get("LINKEDIN_ORGANIZATION_URN"),
+            access_token=os.environ.get("LINKEDIN_ACCESS_TOKEN"),
+            version=os.environ.get("LINKEDIN_VERSION") or "202605",
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.organization_urn:
+            raise ConfigError(
+                "LinkedIn ingestion requires LINKEDIN_ORGANIZATION_URN (the "
+                "urn:li:organization:{id} whose page is read + namespaces external_ids).")
+        if not self.access_token:
+            raise ConfigError(
+                "LinkedIn ingestion requires LINKEDIN_ACCESS_TOKEN (a 3-legged "
+                "member-authorized OAuth Bearer access token).")
+        return self.base_url, self.organization_urn
+
+
 # --------------------------------------------------------------------------- Shared
 
 
