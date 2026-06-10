@@ -800,6 +800,50 @@ class GustoConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Carta
+
+
+@dataclass(frozen=True)
+class CartaConfig:
+    """Carta (cap-table / equity-management) API ``v1alpha1``. Auth is OAuth 2.0 —
+    a client-credentials ``client_id``/``client_secret`` is exchanged at
+    ``POST /o/access_token/`` (HTTP Basic + body ``grant_type=CLIENT_CREDENTIALS``)
+    for a Bearer access token; the client-credentials response carries NO
+    ``refresh_token`` (Carta tokens live ~1h — you re-mint). If a pre-minted
+    ``CARTA_ACCESS_TOKEN`` is supplied the exchange is skipped. base_url defaults to
+    the production host ``https://api.carta.com`` (the ``/v1alpha1`` segment is part
+    of each path, NOT the base); point it at the mock via CARTA_API_BASE_URL.
+    ``issuer_id`` is the cap-table tenant — it scopes every read and namespaces each
+    observation's ``external_id``. Carta is POLL-ONLY (NO webhook of any kind), so
+    there is no webhook secret and no live slice."""
+    base_url: str
+    issuer_id: str | None
+    access_token: str | None
+    client_id: str | None
+    client_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "CartaConfig":
+        return cls(
+            base_url=(os.environ.get("CARTA_API_BASE_URL")
+                      or "https://api.carta.com").rstrip("/"),
+            issuer_id=os.environ.get("CARTA_ISSUER_ID"),
+            access_token=os.environ.get("CARTA_ACCESS_TOKEN"),
+            client_id=os.environ.get("CARTA_CLIENT_ID"),
+            client_secret=os.environ.get("CARTA_CLIENT_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.issuer_id:
+            raise ConfigError("Carta ingestion requires CARTA_ISSUER_ID (the issuer "
+                              "whose cap table is read + namespaces external_ids).")
+        if not (self.access_token or (self.client_id and self.client_secret)):
+            raise ConfigError(
+                "Carta ingestion requires CARTA_ACCESS_TOKEN, or CARTA_CLIENT_ID + "
+                "CARTA_CLIENT_SECRET to mint one via the client-credentials grant.")
+        return self.base_url, self.issuer_id
+
+
 # --------------------------------------------------------------------------- Shared
 
 

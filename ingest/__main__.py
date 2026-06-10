@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
                         choices=["slack", "github", "discord", "gmail", "calendar", "notion",
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
                                  "brex", "deel", "hibob", "figma", "miro", "ramp",
-                                 "gusto"])
+                                 "gusto", "carta"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -147,6 +147,16 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         from .miro import run as miro_run
         return _finish(miro_run.run_historical())
+
+    # Carta: poll-only — Carta has NO webhook / push of any kind, so there is no live
+    # push to listen for. Incremental ingestion re-walks the cap-table collections.
+    if args.provider == "carta":
+        if args.mode != "historical":
+            print("carta has no live mode (Carta has no webhook/push — the source is "
+                  "poll-only); run `historical`.", file=sys.stderr)
+            return 2
+        from .carta import run as carta_run
+        return _finish(carta_run.run_historical())
 
     if args.provider == "gmail":
         from .google import run as google_run
