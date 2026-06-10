@@ -403,6 +403,41 @@ class JiraConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Grafana
+
+
+@dataclass(frozen=True)
+class GrafanaConfig:
+    """Grafana observability. One org-scoped service-account Bearer token
+    (``Authorization: Bearer glsa_…``) reads the whole org's annotations; the same
+    instance also signs its Alerting webhook with an HMAC secret. base_url defaults
+    to nothing — point it at the instance (or the mock) via GRAFANA_API_BASE_URL."""
+    base_url: str | None      # https://<instance>.grafana.net (or the mock)
+    api_token: str | None     # service-account token (glsa_…)
+    webhook_secret: str | None  # HMAC-SHA256 alerting-webhook secret
+
+    @classmethod
+    def from_env(cls) -> "GrafanaConfig":
+        base = os.environ.get("GRAFANA_API_BASE_URL")
+        return cls(
+            base_url=base.rstrip("/") if base else None,
+            api_token=os.environ.get("GRAFANA_API_TOKEN"),
+            webhook_secret=os.environ.get("GRAFANA_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        missing = [n for n, v in (("GRAFANA_API_BASE_URL", self.base_url),
+                                  ("GRAFANA_API_TOKEN", self.api_token)) if not v]
+        if missing:
+            raise ConfigError("Grafana ingestion requires " + ", ".join(missing) + ".")
+        return self.base_url, self.api_token  # type: ignore[return-value]
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("GRAFANA_WEBHOOK_SECRET is required to verify webhook deliveries.")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
