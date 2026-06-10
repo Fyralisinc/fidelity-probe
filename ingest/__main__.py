@@ -29,7 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("provider",
                         choices=["slack", "github", "discord", "gmail", "calendar", "notion",
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
-                                 "brex", "deel", "hibob", "figma", "miro", "ramp"])
+                                 "brex", "deel", "hibob", "figma", "miro", "ramp",
+                                 "gusto"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -128,6 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         from .ramp import run as ramp_run
         report = (ramp_run.run_historical() if args.mode == "historical"
                   else ramp_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    if args.provider == "gusto":
+        from .gusto import run as gusto_run
+        report = (gusto_run.run_historical() if args.mode == "historical"
+                  else gusto_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
     # Miro: poll-only — its experimental webhooks were discontinued 2025-12-05, so

@@ -748,6 +748,58 @@ class RampConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Gusto
+
+
+@dataclass(frozen=True)
+class GustoConfig:
+    """Gusto (payroll + HR) Embedded Payroll API. Auth is OAuth 2.0 Bearer — the
+    install is operator-mediated (the operator pastes the ``company_uuid`` +
+    ``access_token`` from their own Gusto OAuth app; there is NO client-credentials
+    grant). If a ``GUSTO_REFRESH_TOKEN`` (+ client creds) is supplied instead of a
+    token, the slice mints one at ``POST /oauth/token``. base_url defaults to the
+    production host ``https://api.gusto.com`` (the ``/v1`` segment is part of each
+    path); point it at the mock via GUSTO_API_BASE_URL. The webhook secret is the
+    subscription's ``verification_token`` (the X-Gusto-Signature HMAC-SHA256 key)."""
+    base_url: str
+    company_uuid: str | None
+    access_token: str | None
+    refresh_token: str | None
+    client_id: str | None
+    client_secret: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "GustoConfig":
+        return cls(
+            base_url=(os.environ.get("GUSTO_API_BASE_URL")
+                      or "https://api.gusto.com").rstrip("/"),
+            company_uuid=os.environ.get("GUSTO_COMPANY_UUID"),
+            access_token=os.environ.get("GUSTO_ACCESS_TOKEN"),
+            refresh_token=os.environ.get("GUSTO_REFRESH_TOKEN"),
+            client_id=os.environ.get("GUSTO_CLIENT_ID"),
+            client_secret=os.environ.get("GUSTO_CLIENT_SECRET"),
+            webhook_secret=os.environ.get("GUSTO_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> str:
+        if not self.company_uuid:
+            raise ConfigError("Gusto ingestion requires GUSTO_COMPANY_UUID.")
+        if not (self.access_token or (self.refresh_token and self.client_id
+                                      and self.client_secret)):
+            raise ConfigError(
+                "Gusto ingestion requires GUSTO_ACCESS_TOKEN, or GUSTO_REFRESH_TOKEN "
+                "+ GUSTO_CLIENT_ID + GUSTO_CLIENT_SECRET to mint one.")
+        return self.base_url
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("GUSTO_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the X-Gusto-Signature HMAC-SHA256 key = the "
+                              "subscription's verification_token).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
