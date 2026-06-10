@@ -1037,6 +1037,68 @@ class TelegramConfig:
         return self.account_label or "telegram"
 
 
+# --------------------------------------------------------------------------- Signal
+
+
+@dataclass(frozen=True)
+class SignalConfig:
+    """Signal (linked-device messaging) ingestion. Signal has NO official server
+    API; the only sound integration is **signal-cli in JSON-RPC daemon mode** (link
+    signal-cli as a secondary device, ``signal-cli -a <number> daemon --tcp``, talk
+    line-delimited JSON-RPC 2.0). But signal-cli is FORWARD-ONLY — it has no
+    backward history-fetch method at all — so the backward-paged backfill the
+    ingestion contract assumes is served over a method-contract shim: HTTP for the
+    reads (``get_history`` backward ``offset_ts`` paging, ``iter_threads``,
+    ``has_history_since``, ``me``) + a WebSocket gateway for the live receive stream
+    (signal-cli ``receive`` notifications — no webhook, no HMAC; the authenticated
+    linked-device session is the trust boundary, like Discord/Telegram). The
+    payloads are the REAL signal-cli envelope shapes (dataMessage / syncMessage,
+    base64 groupId, sourceUuid actors, timestamp-MS message ids).
+
+    The durable credential is a persisted linked-device session (the libsignal
+    identity store; presented on each read + once on the WS connect here, the
+    transport substitution). ``account_label`` is the install namespace that scopes
+    each observation's ``external_id`` ``signal:{label}:{thread}:{ts_ms}:none`` (the
+    edit slot is ALWAYS ``none`` — Signal v1 messages are immutable)."""
+    base_url: str             # the mock HTTP base (SIGNAL_API_BASE_URL)
+    gateway_url: str | None   # the WS receive base (SIGNAL_GATEWAY_URL); else derived
+    session: str | None       # the persisted linked-device session credential
+    account_label: str | None  # the install namespace for external_id
+
+    @classmethod
+    def from_env(cls) -> "SignalConfig":
+        base = (os.environ.get("SIGNAL_API_BASE_URL") or "").rstrip("/")
+        return cls(
+            base_url=base,
+            gateway_url=(os.environ.get("SIGNAL_GATEWAY_URL") or None),
+            session=os.environ.get("SIGNAL_SESSION"),
+            account_label=os.environ.get("SIGNAL_ACCOUNT_LABEL"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        missing = [n for n, v in (("SIGNAL_API_BASE_URL", self.base_url),
+                                  ("SIGNAL_SESSION", self.session)) if not v]
+        if missing:
+            raise ConfigError("Signal ingestion requires " + ", ".join(missing)
+                              + " (the mock base URL + the linked-device session).")
+        return self.base_url, self.session  # type: ignore[return-value]
+
+    def ws_url(self) -> str:
+        """The receive-gateway WS URL (SIGNAL_GATEWAY_URL, else base_url with
+        http→ws + /gateway)."""
+        if self.gateway_url:
+            return self.gateway_url
+        b = self.base_url
+        if b.startswith("https://"):
+            b = "wss://" + b[len("https://"):]
+        elif b.startswith("http://"):
+            b = "ws://" + b[len("http://"):]
+        return b + "/gateway"
+
+    def namespace(self) -> str:
+        return self.account_label or "signal"
+
+
 # --------------------------------------------------------------------------- Shared
 
 

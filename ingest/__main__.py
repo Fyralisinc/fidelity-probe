@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> int:
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
                                  "brex", "deel", "hibob", "figma", "miro", "ramp",
                                  "gusto", "carta", "linkedin", "fireflies", "aws",
-                                 "telegram"])
+                                 "telegram", "signal"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -157,6 +157,14 @@ def main(argv: list[str] | None = None) -> int:
         from .telegram import run as telegram_run
         report = (telegram_run.run_historical() if args.mode == "historical"
                   else telegram_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    # Signal: live = the persistent linked-device receive loop (a WebSocket here),
+    # pushing signal-cli `receive` notifications — NOT a webhook (no HMAC).
+    if args.provider == "signal":
+        from .signal import run as signal_run
+        report = (signal_run.run_historical() if args.mode == "historical"
+                  else signal_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
     # Miro: poll-only — its experimental webhooks were discontinued 2025-12-05, so
