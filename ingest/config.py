@@ -438,6 +438,41 @@ class GrafanaConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Mercury
+
+
+@dataclass(frozen=True)
+class MercuryConfig:
+    """Mercury (business banking) REST API. The org API token authenticates via
+    ``Authorization: Bearer <token>`` (token carries a literal ``secret-token:``
+    prefix). base_url defaults to the production host; point it at the mock via
+    MERCURY_API_BASE_URL (note the real base includes the ``/api/v1`` version
+    segment)."""
+    base_url: str
+    api_token: str | None
+    webhook_secret: str | None  # the endpoint's secretKey (Mercury-Signature HMAC key)
+
+    @classmethod
+    def from_env(cls) -> "MercuryConfig":
+        return cls(
+            base_url=(os.environ.get("MERCURY_API_BASE_URL")
+                      or "https://api.mercury.com/api/v1").rstrip("/"),
+            api_token=os.environ.get("MERCURY_API_TOKEN"),
+            webhook_secret=os.environ.get("MERCURY_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.api_token:
+            raise ConfigError("MERCURY_API_TOKEN is required (the org API token).")
+        return self.base_url, self.api_token
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("MERCURY_WEBHOOK_SECRET is required to verify webhook deliveries "
+                              "(the endpoint's secretKey).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
