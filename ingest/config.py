@@ -509,6 +509,43 @@ class AshbyConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Brex
+
+
+@dataclass(frozen=True)
+class BrexConfig:
+    """Brex (corporate cards + cash management) REST API. Auth is a user/OAuth
+    token via ``Authorization: Bearer <token>`` (user tokens carry a ``bxt_``
+    prefix). base_url defaults to the production host ``https://api.brex.com``
+    (the ``/v2`` segment is part of each path, NOT the base); point it at the mock
+    via BREX_API_BASE_URL. The webhook secret is the Svix ``whsec_…`` signing
+    secret from ``GET /v1/webhooks/secrets``."""
+    base_url: str
+    api_token: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "BrexConfig":
+        return cls(
+            base_url=(os.environ.get("BREX_API_BASE_URL")
+                      or "https://api.brex.com").rstrip("/"),
+            api_token=os.environ.get("BREX_API_TOKEN"),
+            webhook_secret=os.environ.get("BREX_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.api_token:
+            raise ConfigError("BREX_API_TOKEN is required (a Brex user/OAuth token, "
+                              "sent as Authorization: Bearer <token>).")
+        return self.base_url, self.api_token
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("BREX_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the Svix whsec_ signing secret).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
