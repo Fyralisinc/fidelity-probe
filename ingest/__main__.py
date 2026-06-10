@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
                         choices=["slack", "github", "discord", "gmail", "calendar", "notion",
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
                                  "brex", "deel", "hibob", "figma", "miro", "ramp",
-                                 "gusto", "carta", "linkedin", "fireflies"])
+                                 "gusto", "carta", "linkedin", "fireflies", "aws"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -141,6 +141,13 @@ def main(argv: list[str] | None = None) -> int:
         from .fireflies import run as fireflies_run
         report = (fireflies_run.run_historical() if args.mode == "historical"
                   else fireflies_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    # AWS: live = the POLL edge (incremental LookupEvents re-walk), NOT a webhook.
+    if args.provider == "aws":
+        from .aws import run as aws_run
+        report = (aws_run.run_historical() if args.mode == "historical"
+                  else aws_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
     # Miro: poll-only — its experimental webhooks were discontinued 2025-12-05, so
