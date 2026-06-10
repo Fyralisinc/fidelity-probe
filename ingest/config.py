@@ -928,6 +928,56 @@ class FirefliesConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- AWS
+
+
+@dataclass(frozen=True)
+class AwsConfig:
+    """AWS (CloudTrail) ingestion. Unlike every other source this speaks the
+    GENUINE AWS wire protocols via ``boto3``/``botocore`` — there is NO HTTP base
+    URL knob in the usual sense; the only mock-pointing switch is the ``boto3``
+    ``endpoint_url`` (``AWS_API_BASE_URL``), exactly the moto/localstack
+    ``endpoint_override`` seam a real integration test uses. botocore SigV4-signs
+    every request from the access-key pair; CloudTrail uses ``LookupEvents`` (JSON
+    1.1, opaque ``NextToken``, ``MaxResults`` ≤ 50) over a time window, and STS is
+    the connectivity (``GetCallerIdentity``) + ``AssumeRole`` probe.
+
+    The 90-day ``LookupEvents`` retention is a CLIENT-side floor: the window is
+    ``[end - window_days, end]``. For a frozen mock run, point ``end`` at the run's
+    virtual now via ``AWS_BACKFILL_END`` (a seed-stable knob, like the other
+    sources' tokens); it defaults to wall-clock now for a real account."""
+    base_url: str | None      # boto3 endpoint_url (the mock); None = real AWS endpoints
+    access_key_id: str | None
+    secret_access_key: str | None
+    region: str
+    account_id: str | None
+    role_arn: str | None      # for the STS:AssumeRole exercise
+    backfill_end: str | None  # ISO datetime upper bound (frozen-run virtual now)
+    window_days: int          # LookupEvents 90-day floor span
+
+    @classmethod
+    def from_env(cls) -> "AwsConfig":
+        base = os.environ.get("AWS_API_BASE_URL")
+        return cls(
+            base_url=base.rstrip("/") if base else None,
+            access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+            secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+            region=os.environ.get("AWS_REGION") or "us-east-1",
+            account_id=os.environ.get("AWS_ACCOUNT_ID"),
+            role_arn=os.environ.get("AWS_ROLE_ARN"),
+            backfill_end=os.environ.get("AWS_BACKFILL_END"),
+            window_days=int(os.environ.get("AWS_BACKFILL_WINDOW_DAYS") or "90"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        missing = [n for n, v in (("AWS_ACCESS_KEY_ID", self.access_key_id),
+                                  ("AWS_SECRET_ACCESS_KEY", self.secret_access_key))
+                   if not v]
+        if missing:
+            raise ConfigError("AWS ingestion requires " + ", ".join(missing) + ".")
+        return self.access_key_id, self.secret_access_key  # type: ignore[return-value]
+
+
 # --------------------------------------------------------------------------- Shared
 
 

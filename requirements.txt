@@ -8,3 +8,4 @@ requests>=2.31
 flask>=3.0
 cryptography>=42
 python-dotenv>=1.0
+boto3>=1.34
