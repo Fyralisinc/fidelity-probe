@@ -473,6 +473,42 @@ class MercuryConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Ashby
+
+
+@dataclass(frozen=True)
+class AshbyConfig:
+    """Ashby (recruiting / ATS) RPC API. Auth is the org API key presented as the
+    HTTP Basic *username* with an EMPTY password (``Authorization: Basic
+    base64("<key>:")``). base_url defaults to the production host (no version path
+    — Ashby versions via the ``Accept: application/json; version=1`` header, not
+    the URL); point it at the mock via ASHBY_API_BASE_URL."""
+    base_url: str
+    api_key: str | None
+    webhook_secret: str | None  # the webhook's signing secret (Ashby-Signature HMAC key)
+
+    @classmethod
+    def from_env(cls) -> "AshbyConfig":
+        return cls(
+            base_url=(os.environ.get("ASHBY_API_BASE_URL")
+                      or "https://api.ashbyhq.com").rstrip("/"),
+            api_key=os.environ.get("ASHBY_API_KEY"),
+            webhook_secret=os.environ.get("ASHBY_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.api_key:
+            raise ConfigError("ASHBY_API_KEY is required (the org API key; sent as the "
+                              "HTTP Basic username with an empty password).")
+        return self.base_url, self.api_key
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("ASHBY_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the webhook's signing secret).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
