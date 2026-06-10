@@ -886,6 +886,48 @@ class LinkedinConfig:
         return self.base_url, self.organization_urn
 
 
+# ----------------------------------------------------------------------- Fireflies
+
+
+@dataclass(frozen=True)
+class FirefliesConfig:
+    """Fireflies.ai (AI meeting-notetaker) GraphQL API. Auth is a single long-lived
+    API token presented as ``Authorization: Bearer <token>`` (the Bearer archetype —
+    no OAuth bounce, no refresh; the operator pastes the key from Settings →
+    Developer Settings). The API is **GraphQL**: a single ``POST /graphql`` exposing
+    ``transcripts``/``transcript``/``user`` queries. base_url defaults to the
+    production host ``https://api.fireflies.ai`` (``/graphql`` is appended); point it
+    at the mock via FIREFLIES_API_BASE_URL. There is NO first-class "workspace id" —
+    identity is the API-key owner (resolved via the ``user`` query); we use it as the
+    dedup namespace. The webhook secret is the HMAC-SHA256 signing key used to verify
+    the ``x-hub-signature`` header (``sha256=<hex>``)."""
+    base_url: str
+    api_token: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "FirefliesConfig":
+        return cls(
+            base_url=(os.environ.get("FIREFLIES_API_BASE_URL")
+                      or "https://api.fireflies.ai").rstrip("/"),
+            api_token=os.environ.get("FIREFLIES_API_TOKEN"),
+            webhook_secret=os.environ.get("FIREFLIES_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> str:
+        if not self.api_token:
+            raise ConfigError(
+                "Fireflies ingestion requires FIREFLIES_API_TOKEN (the long-lived "
+                "Bearer API key from the Fireflies app's Developer Settings).")
+        return self.base_url
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("FIREFLIES_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the x-hub-signature HMAC-SHA256 key).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
