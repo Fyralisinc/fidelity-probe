@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("provider",
                         choices=["slack", "github", "discord", "gmail", "calendar", "notion",
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
-                                 "brex", "deel"])
+                                 "brex", "deel", "hibob"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -110,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
         from .deel import run as deel_run
         report = (deel_run.run_historical() if args.mode == "historical"
                   else deel_run.run_live(run_seconds=args.seconds))
+        return _finish(report)
+
+    if args.provider == "hibob":
+        from .hibob import run as hibob_run
+        report = (hibob_run.run_historical() if args.mode == "historical"
+                  else hibob_run.run_live(run_seconds=args.seconds))
         return _finish(report)
 
     if args.provider == "gmail":
