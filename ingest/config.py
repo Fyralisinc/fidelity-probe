@@ -665,6 +665,42 @@ class FigmaConfig:
         return self.webhook_passcode
 
 
+# --------------------------------------------------------------------------- Miro
+
+
+@dataclass(frozen=True)
+class MiroConfig:
+    """Miro collaborative-whiteboard REST API v2. Auth is a single long-lived
+    org-level app token presented as ``Authorization: Bearer <token>`` (scope
+    ``boards:read``). base_url defaults to the production host
+    ``https://api.miro.com/v2`` (the ``/v2`` segment IS part of the base); point it
+    at the mock via MIRO_API_BASE_URL. ``org_id`` namespaces every observation's
+    ``external_id`` (miro:{org_id}:item:{item_id}:{version}). Miro is POLL-ONLY —
+    its experimental webhooks were discontinued 2025-12-05, so there is no webhook
+    secret and no live slice."""
+    base_url: str
+    org_id: str | None
+    access_token: str | None
+
+    @classmethod
+    def from_env(cls) -> "MiroConfig":
+        return cls(
+            base_url=(os.environ.get("MIRO_API_BASE_URL")
+                      or "https://api.miro.com/v2").rstrip("/"),
+            org_id=os.environ.get("MIRO_ORG_ID"),
+            access_token=os.environ.get("MIRO_ACCESS_TOKEN"),
+        )
+
+    def require_auth(self) -> tuple[str, str, str]:
+        missing = [n for n, v in (("MIRO_ORG_ID", self.org_id),
+                                  ("MIRO_ACCESS_TOKEN", self.access_token)) if not v]
+        if missing:
+            raise ConfigError("Miro ingestion requires " + ", ".join(missing) + " "
+                              "(the org id that namespaces external_ids + the "
+                              "org-app Bearer token).")
+        return self.base_url, self.org_id, self.access_token  # type: ignore[return-value]
+
+
 # --------------------------------------------------------------------------- Shared
 
 

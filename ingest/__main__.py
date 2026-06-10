@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("provider",
                         choices=["slack", "github", "discord", "gmail", "calendar", "notion",
                                  "drive", "jira", "quickbooks", "grafana", "mercury", "ashby",
-                                 "brex", "deel", "hibob", "figma"])
+                                 "brex", "deel", "hibob", "figma", "miro"])
     parser.add_argument("mode", choices=["historical", "live"])
     parser.add_argument("--max-channels", type=int, default=None,
                         help="cap channels scanned (Slack smoke testing)")
@@ -123,6 +123,17 @@ def main(argv: list[str] | None = None) -> int:
         report = (figma_run.run_historical() if args.mode == "historical"
                   else figma_run.run_live(run_seconds=args.seconds))
         return _finish(report)
+
+    # Miro: poll-only — its experimental webhooks were discontinued 2025-12-05, so
+    # there is no live push to listen for. Incremental ingestion re-walks /items.
+    if args.provider == "miro":
+        if args.mode != "historical":
+            print("miro has no live mode (Miro discontinued its experimental webhooks "
+                  "on 2025-12-05 — the source is poll-only); run `historical`.",
+                  file=sys.stderr)
+            return 2
+        from .miro import run as miro_run
+        return _finish(miro_run.run_historical())
 
     if args.provider == "gmail":
         from .google import run as google_run
