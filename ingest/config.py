@@ -583,6 +583,46 @@ class DeelConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- HiBob
+
+
+@dataclass(frozen=True)
+class HibobConfig:
+    """HiBob ("Bob") HR-platform REST API. Auth is a **service user** HTTP Basic
+    credential ``base64(service_user_id:token)`` (apidocs.hibob.com/reference/
+    authorization). base_url defaults to the production host
+    ``https://api.hibob.com`` (the ``/v1`` segment is part of each path, NOT the
+    base); point it at the mock via HIBOB_API_BASE_URL. The webhook secret is the
+    HMAC-SHA512 signing key used to verify the ``Bob-Signature`` header."""
+    base_url: str
+    service_user_id: str | None
+    service_user_token: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "HibobConfig":
+        return cls(
+            base_url=(os.environ.get("HIBOB_API_BASE_URL")
+                      or "https://api.hibob.com").rstrip("/"),
+            service_user_id=os.environ.get("HIBOB_SERVICE_USER_ID"),
+            service_user_token=os.environ.get("HIBOB_SERVICE_USER_TOKEN"),
+            webhook_secret=os.environ.get("HIBOB_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str, str]:
+        if not (self.service_user_id and self.service_user_token):
+            raise ConfigError("HIBOB_SERVICE_USER_ID and HIBOB_SERVICE_USER_TOKEN "
+                              "are required (the HiBob service-user Basic credential, "
+                              "sent as Authorization: Basic base64(id:token)).")
+        return self.base_url, self.service_user_id, self.service_user_token
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("HIBOB_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the Bob-Signature HMAC-SHA512 key).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
