@@ -546,6 +546,43 @@ class BrexConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Deel
+
+
+@dataclass(frozen=True)
+class DeelConfig:
+    """Deel (global payroll / contractor payments) REST API. Auth is a long-lived
+    org/personal API token via ``Authorization: Bearer <token>``. base_url defaults
+    to the production host ``https://api.letsdeel.com/rest/v2`` (the ``/rest/v2``
+    segment IS part of the base; the client does ``{base}/contracts``); point it at
+    the mock via DEEL_API_BASE_URL. The webhook secret is the HMAC signing key used
+    to verify the ``x-deel-signature`` header."""
+    base_url: str
+    api_token: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "DeelConfig":
+        return cls(
+            base_url=(os.environ.get("DEEL_API_BASE_URL")
+                      or "https://api.letsdeel.com/rest/v2").rstrip("/"),
+            api_token=os.environ.get("DEEL_API_TOKEN"),
+            webhook_secret=os.environ.get("DEEL_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> tuple[str, str]:
+        if not self.api_token:
+            raise ConfigError("DEEL_API_TOKEN is required (a Deel org/personal API "
+                              "token, sent as Authorization: Bearer <token>).")
+        return self.base_url, self.api_token
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("DEEL_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the x-deel-signature HMAC key).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
