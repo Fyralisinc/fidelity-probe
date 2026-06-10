@@ -623,6 +623,48 @@ class HibobConfig:
         return self.webhook_secret
 
 
+# --------------------------------------------------------------------------- Figma
+
+
+@dataclass(frozen=True)
+class FigmaConfig:
+    """Figma design-tool REST API. Auth is a personal/plan access token presented as
+    the ``X-Figma-Token`` header (the OAuth ``Authorization: Bearer`` form is also
+    accepted on read endpoints). base_url defaults to the production host
+    ``https://api.figma.com`` (the ``/v1`` segment is part of each path, NOT the
+    base); point it at the mock via FIGMA_API_BASE_URL. ``team_id`` is the root of
+    the teams → projects → files enumeration. The webhook ``passcode`` is the
+    Webhooks-v2 plaintext body passcode (NOT an HMAC secret — Figma signs nothing)."""
+    base_url: str
+    team_id: str | None
+    access_token: str | None
+    webhook_passcode: str | None
+
+    @classmethod
+    def from_env(cls) -> "FigmaConfig":
+        return cls(
+            base_url=(os.environ.get("FIGMA_API_BASE_URL")
+                      or "https://api.figma.com").rstrip("/"),
+            team_id=os.environ.get("FIGMA_TEAM_ID"),
+            access_token=os.environ.get("FIGMA_ACCESS_TOKEN"),
+            webhook_passcode=os.environ.get("FIGMA_WEBHOOK_PASSCODE"),
+        )
+
+    def require_auth(self) -> tuple[str, str, str]:
+        missing = [n for n, v in (("FIGMA_TEAM_ID", self.team_id),
+                                  ("FIGMA_ACCESS_TOKEN", self.access_token)) if not v]
+        if missing:
+            raise ConfigError("Figma ingestion requires " + ", ".join(missing) + " "
+                              "(the team to enumerate + the X-Figma-Token access token).")
+        return self.base_url, self.team_id, self.access_token  # type: ignore[return-value]
+
+    def require_webhook_passcode(self) -> str:
+        if not self.webhook_passcode:
+            raise ConfigError("FIGMA_WEBHOOK_PASSCODE is required for the live slice "
+                              "(the Webhooks-v2 plaintext body passcode — Figma has no HMAC).")
+        return self.webhook_passcode
+
+
 # --------------------------------------------------------------------------- Shared
 
 
