@@ -701,6 +701,53 @@ class MiroConfig:
         return self.base_url, self.org_id, self.access_token  # type: ignore[return-value]
 
 
+# --------------------------------------------------------------------------- Ramp
+
+
+@dataclass(frozen=True)
+class RampConfig:
+    """Ramp (corporate cards + bill-pay + reimbursements) Developer API. Auth is
+    OAuth 2.0: a client-credentials ``client_id``/``client_secret`` is exchanged at
+    ``POST /developer/v1/token`` for a Bearer access token (``ramp_business_tok_…``);
+    if a pre-minted ``RAMP_ACCESS_TOKEN`` is supplied the exchange is skipped.
+    base_url defaults to the production host ``https://api.ramp.com`` (the
+    ``/developer/v1`` segment is part of each path, NOT the base); point it at the
+    mock via RAMP_API_BASE_URL. The webhook secret is the HMAC-SHA256 signing key
+    used to verify the ``X-Ramp-Signature`` header."""
+    base_url: str
+    client_id: str | None
+    client_secret: str | None
+    access_token: str | None
+    webhook_secret: str | None
+
+    @classmethod
+    def from_env(cls) -> "RampConfig":
+        return cls(
+            base_url=(os.environ.get("RAMP_API_BASE_URL")
+                      or "https://api.ramp.com").rstrip("/"),
+            client_id=os.environ.get("RAMP_CLIENT_ID"),
+            client_secret=os.environ.get("RAMP_CLIENT_SECRET"),
+            access_token=os.environ.get("RAMP_ACCESS_TOKEN"),
+            webhook_secret=os.environ.get("RAMP_WEBHOOK_SECRET"),
+        )
+
+    def require_auth(self) -> str:
+        """Either a pre-minted access token OR client-credentials must be present."""
+        if self.access_token:
+            return self.base_url
+        if not (self.client_id and self.client_secret):
+            raise ConfigError(
+                "Ramp ingestion requires RAMP_ACCESS_TOKEN, or RAMP_CLIENT_ID + "
+                "RAMP_CLIENT_SECRET to mint one via the client-credentials grant.")
+        return self.base_url
+
+    def require_webhook_secret(self) -> str:
+        if not self.webhook_secret:
+            raise ConfigError("RAMP_WEBHOOK_SECRET is required to verify webhook "
+                              "deliveries (the X-Ramp-Signature HMAC-SHA256 key).")
+        return self.webhook_secret
+
+
 # --------------------------------------------------------------------------- Shared
 
 
